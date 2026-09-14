@@ -1,6 +1,8 @@
 package com.jingluo.paismart.controller;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -14,11 +16,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.jingluo.paismart.domain.ResponseResult;
+import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
+import com.jingluo.paismart.service.RateLimitConfigService;
+import com.jingluo.paismart.service.UsageDashboardService;
 import com.jingluo.paismart.utils.JwtUtils;
 
 import io.micrometer.common.util.StringUtils;
@@ -37,6 +41,12 @@ public class AdminController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UsageDashboardService usageDashboardService;
+
+    @Autowired
+    private RateLimitConfigService rateLimitConfigService;
 
     /**
      * 获取所有用户列表
@@ -125,5 +135,110 @@ public class AdminController {
         // knowledgeService.deleteDocument(documentId);
 
         return ResponseResult.success("文档已成功从知识库中删除");
+    }
+
+    /**
+     * 获取系统状态
+     *
+     * @param token
+     * @return
+     */
+    @GetMapping("/system/status")
+    public ResponseResult getSystemStatus(@RequestHeader("Authorization") String token) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        // 这里应该调用系统监控服务来获取系统状态
+        // SystemStatus status = monitoringService.getSystemStatus();
+
+        // 模拟系统状态数据
+        Map<String, Object> status = new HashMap<>();
+        status.put("cpu_usage", "30%");
+        status.put("memory_usage", "45%");
+        status.put("disk_usage", "60%");
+        status.put("active_users", 15);
+        status.put("total_documents", 250);
+        status.put("total_conversations", 1200);
+
+        return ResponseResult.success(status);
+    }
+
+    /**
+     * 获取用户活动日志
+     * 
+     * @param token
+     * @param username
+     * @param start_date
+     * @param end_date
+     * @return
+     */
+    @GetMapping("/user-activities")
+    public ResponseResult getUserActivities(@RequestHeader("Authorization") String token,
+        @RequestParam(required = false) String username, @RequestParam(required = false) String start_date,
+        @RequestParam(required = false) String end_date) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        // 这里应该调用用户活动监控服务来获取活动日志
+        // List<UserActivity> activities = activityService.getUserActivities(username, startDate, endDate);
+
+        // 模拟用户活动数据
+        List<Map<String, Object>> activities = List.of(
+            Map.of("username", "user1", "action", "LOGIN", "timestamp", "2026-09-14T10:15:30", "ip_address",
+                "192.168.1.100"),
+            Map.of("username", "user2", "action", "UPLOAD_FILE", "timestamp", "2026-09-14T11:20:45", "ip_address",
+                "192.168.1.101"));
+
+        return ResponseResult.success(activities);
+    }
+
+    /**
+     * 获取用量概览
+     *
+     * @param token
+     * @param days
+     * @return
+     */
+    @GetMapping("/usage/overview")
+    public ResponseResult getUsageOverview(@RequestHeader("Authorization") String token,
+        @RequestParam(defaultValue = "7") int days) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(usageDashboardService.buildOverview(days));
+    }
+
+    /**
+     * 获取速率限制配置
+     *
+     * @param token
+     * @return
+     */
+    @GetMapping("/rate-limits")
+    public ResponseResult getRateLimits(@RequestHeader("Authorization") String token) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(rateLimitConfigService.getCurrentSettings());
     }
 }

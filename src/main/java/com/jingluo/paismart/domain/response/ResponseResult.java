@@ -1,4 +1,4 @@
-package com.jingluo.paismart.domain;
+package com.jingluo.paismart.domain.response;
 
 import java.io.Serializable;
 
