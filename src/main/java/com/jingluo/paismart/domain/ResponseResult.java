@@ -56,4 +56,15 @@ public class ResponseResult<T> implements Serializable {
     public static <T> ResponseResult<T> success(T data) {
         return new ResponseResult<>(HttpStatus.OK.value(), null, data);
     }
+
+    /**
+     * 成功
+     *
+     * @param msg
+     * @return
+     * @param <T>
+     */
+    public static <T> ResponseResult<T> success(String msg) {
+        return new ResponseResult<>(HttpStatus.OK.value(), msg, null);
+    }
 }

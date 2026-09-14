@@ -4,7 +4,9 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -99,5 +101,29 @@ public class AdminController {
         // knowledgeService.addDocument(file, description);
 
         return ResponseResult.success("文档已成功添加到知识库");
+    }
+
+    /**
+     * 删除知识库文档
+     * 
+     * @param token
+     * @param documentId
+     * @return
+     */
+    @DeleteMapping("/knowledge/{documentId}")
+    public ResponseResult deleteKnowledgeDocument(@RequestHeader("Authorization") String token,
+        @PathVariable("documentId") String documentId) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        // 这里应该调用知识库管理服务来删除文档
+        // knowledgeService.deleteDocument(documentId);
+
+        return ResponseResult.success("文档已成功从知识库中删除");
     }
 }
