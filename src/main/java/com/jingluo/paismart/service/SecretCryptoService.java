@@ -1,6 +1,7 @@
 package com.jingluo.paismart.service;
 
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 import javax.crypto.Cipher;
@@ -26,6 +27,10 @@ public class SecretCryptoService {
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
 
     private static final int TAG_LENGTH_BITS = 128;
+
+    private static final int IV_LENGTH_BYTES = 12;
+
+    private final SecureRandom secureRandom = new SecureRandom();
 
     /**
      * 密钥脱敏显示：长度大于 8 位时保留前 4 位与后 4 位，中间以 **** 代替
@@ -71,6 +76,34 @@ public class SecretCryptoService {
             return new String(decrypted, StandardCharsets.UTF_8);
         } catch (Exception exception) {
             throw new IllegalStateException("模型配置密钥解密失败", exception);
+        }
+    }
+
+    /**
+     * 密钥加密
+     *
+     * @param raw
+     * @return
+     */
+    public String encrypt(String raw) {
+        if (StringUtils.isNotBlank(raw)) {
+            return null;
+        }
+
+        try {
+            byte[] iv = new byte[IV_LENGTH_BYTES];
+            secureRandom.nextBytes(iv);
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+            SecretKeySpec keySpec = new SecretKeySpec(Base64.getDecoder().decode(base64Secret), "AES");
+
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, new GCMParameterSpec(TAG_LENGTH_BITS, iv));
+            byte[] encrypted = cipher.doFinal(raw.getBytes(StandardCharsets.UTF_8));
+
+            return Base64.getEncoder().encodeToString(iv) + ":" + Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception exception) {
+            throw new IllegalStateException("模型配置密钥加密失败", exception);
         }
     }
 }

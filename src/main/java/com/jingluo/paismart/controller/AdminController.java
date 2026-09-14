@@ -6,16 +6,20 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
@@ -263,5 +267,27 @@ public class AdminController {
         validateAdmin(adminUsername);
 
         return ResponseResult.success(modelProviderConfigService.getCurrentSettings());
+    }
+
+    /**
+     * 更新模型提供者配置
+     *
+     * @param token
+     * @param scope
+     * @param request
+     * @return
+     */
+    @PutMapping("/model-providers/{scope}")
+    public ResponseResult updateModelProviders(@RequestHeader("Authorization") String token, @PathVariable String scope,
+        @RequestBody @Validated UpdateScopeRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(modelProviderConfigService.updateScope(scope, request, adminUsername));
     }
 }
