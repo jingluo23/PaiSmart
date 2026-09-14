@@ -21,6 +21,7 @@ import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
+import com.jingluo.paismart.service.ModelProviderConfigService;
 import com.jingluo.paismart.service.RateLimitConfigService;
 import com.jingluo.paismart.service.UsageDashboardService;
 import com.jingluo.paismart.utils.JwtUtils;
@@ -47,6 +48,9 @@ public class AdminController {
 
     @Autowired
     private RateLimitConfigService rateLimitConfigService;
+
+    @Autowired
+    private ModelProviderConfigService modelProviderConfigService;
 
     /**
      * 获取所有用户列表
@@ -240,5 +244,24 @@ public class AdminController {
         validateAdmin(adminUsername);
 
         return ResponseResult.success(rateLimitConfigService.getCurrentSettings());
+    }
+
+    /**
+     * 获取模型提供者配置
+     *
+     * @param token
+     * @return
+     */
+    @GetMapping("/model-providers")
+    public ResponseResult getModelProviders(@RequestHeader("Authorization") String token) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(modelProviderConfigService.getCurrentSettings());
     }
 }
