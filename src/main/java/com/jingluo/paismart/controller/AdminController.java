@@ -3,6 +3,7 @@ package com.jingluo.paismart.controller;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -21,14 +22,19 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.jingluo.paismart.domain.request.AdminUserRequest;
+import com.jingluo.paismart.domain.request.AssignOrgTagsRequest;
 import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
+import com.jingluo.paismart.domain.request.OrgTagRequest;
+import com.jingluo.paismart.domain.request.OrgTagUpdateRequest;
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
+import com.jingluo.paismart.model.OrganizationTag;
 import com.jingluo.paismart.model.User;
+import com.jingluo.paismart.repository.OrganizationTagRepository;
 import com.jingluo.paismart.repository.UserRepository;
 import com.jingluo.paismart.service.InviteCodeService;
 import com.jingluo.paismart.service.ModelProviderConfigService;
@@ -68,6 +74,9 @@ public class AdminController {
 
     @Autowired
     private InviteCodeService inviteCodeService;
+
+    @Autowired
+    private OrganizationTagRepository organizationTagRepository;
 
     /**
      * 获取所有用户列表
@@ -481,5 +490,178 @@ public class AdminController {
         var updated = inviteCodeService.update(id, adminUsername, request.getCode(), request.getMaxUses(), null);
 
         return ResponseResult.success(updated);
+    }
+
+    /**
+     * 创建组织标签
+     *
+     * @param token
+     * @param request
+     * @return
+     */
+    @PostMapping("/org-tags")
+    public ResponseResult createOrganizationTag(@RequestHeader("Authorization") String token,
+        @RequestBody OrgTagRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        OrganizationTag tag = userService.createOrganizationTag(request.getTagId(), request.getName(),
+            request.getDescription(), request.getParentTag(), request.getUploadMaxSizeMb(), adminUsername);
+
+        return ResponseResult.success(tag);
+    }
+
+    /**
+     * 获取所有组织标签列表
+     *
+     * @param token
+     * @return
+     */
+    @GetMapping("/org-tags")
+    public ResponseResult getAllOrganizationTags(@RequestHeader("Authorization") String token) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        List<OrganizationTag> tags = organizationTagRepository.findAll();
+
+        return ResponseResult.success(tags);
+    }
+
+    /**
+     * 为用户分配组织标签
+     *
+     * @param token
+     * @param userId
+     * @param request
+     * @return
+     */
+    @PutMapping("/users/{userId}/org-tags")
+    public ResponseResult assignOrgTagsToUser(@RequestHeader("Authorization") String token, @PathVariable Long userId,
+        @RequestBody AssignOrgTagsRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        userService.assignOrgTagsToUser(userId, request.getOrgTags(), adminUsername);
+
+        return ResponseResult.success("组织标签分配成功");
+    }
+
+    /**
+     * 获取组织标签树形结构，传入 page 或 size 时对根节点分页返回
+     *
+     * @param token
+     * @param page
+     * @param size
+     * @return
+     */
+    @GetMapping("/org-tags/tree")
+    public ResponseResult getOrganizationTagTree(@RequestHeader("Authorization") String token,
+        @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        List<Map<String, Object>> tagTree = userService.getOrganizationTagTree();
+
+        Object data = (Objects.nonNull(page) || Objects.nonNull(size)) ? paginateTree(tagTree, page, size) : tagTree;
+
+        return ResponseResult.success(data);
+    }
+
+    /**
+     * 对标签树根节点做内存分页，返回结构与分页查询结果保持一致（data/content 双字段兼容前端）
+     *
+     * @param tagTree
+     * @param page
+     * @param size
+     * @return
+     */
+    private Map<String, Object> paginateTree(List<Map<String, Object>> tagTree, Integer page, Integer size) {
+        int pageNumber = Objects.isNull(page) || page < 1 ? 1 : page;
+
+        int pageSize = Objects.isNull(size) || size < 1 ? 10 : size;
+
+        int total = tagTree.size();
+
+        int fromIndex = Math.min((pageNumber - 1) * pageSize, total);
+
+        int toIndex = Math.min(fromIndex + pageSize, total);
+
+        List<Map<String, Object>> pagedTree = tagTree.subList(fromIndex, toIndex);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", pagedTree);
+        result.put("content", pagedTree);
+        result.put("number", pageNumber);
+        result.put("size", pageSize);
+        result.put("totalElements", total);
+
+        return result;
+    }
+
+    /**
+     * 更新组织标签
+     *
+     * @param token
+     * @param tagId
+     * @param request
+     * @return
+     */
+    @PutMapping("/org-tags/{tagId}")
+    public ResponseResult updateOrganizationTag(@RequestHeader("Authorization") String token,
+        @PathVariable String tagId, @RequestBody OrgTagUpdateRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        OrganizationTag updatedTag = userService.updateOrganizationTag(tagId, request.getName(),
+            request.getDescription(), request.getParentTag(), request.getUploadMaxSizeMb(), adminUsername);
+
+        return ResponseResult.success(updatedTag);
+    }
+
+    /**
+     * 删除组织标签
+     *
+     * @param token
+     * @param tagId
+     * @return
+     */
+    public ResponseResult deleteOrganizationTag(@RequestHeader("Authorization") String token,
+        @PathVariable String tagId) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        userService.deleteOrganizationTag(tagId, adminUsername);
+
+        return ResponseResult.success("组织标签删除成功");
     }
 }
