@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
@@ -289,5 +290,30 @@ public class AdminController {
         validateAdmin(adminUsername);
 
         return ResponseResult.success(modelProviderConfigService.updateScope(scope, request, adminUsername));
+    }
+
+    /**
+     * 测试模型提供者连通性
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @param request
+     *            连接测试参数（API 地址、模型、密钥等）
+     * @return 连通性测试结果（是否成功、结果描述、耗时）
+     */
+    @PostMapping("/model-providers/{scope}/test")
+    public ResponseResult testModelProviderConnection(@RequestHeader("Authorization") String token,
+        @PathVariable String scope, @RequestBody ProviderConnectionTestRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(modelProviderConfigService.testConnection(scope, request));
     }
 }

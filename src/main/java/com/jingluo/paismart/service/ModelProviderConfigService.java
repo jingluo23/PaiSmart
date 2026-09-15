@@ -1,5 +1,6 @@
 package com.jingluo.paismart.service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -12,11 +13,16 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.ProviderUpsertRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
+import com.jingluo.paismart.domain.response.ConnectivityTestView;
 import com.jingluo.paismart.domain.response.ModelProviderSettingsView;
 import com.jingluo.paismart.domain.response.ProviderConfigView;
 import com.jingluo.paismart.domain.response.ScopeSettingsView;
@@ -71,14 +77,24 @@ public class ModelProviderConfigService {
 
     private static final String EMBEDDINGS_PATH = "/embeddings";
 
+    private volatile ModelProviderSettingsView currentSettings;
+
+    /**
+     * 构造默认配置
+     *
+     * @return
+     */
+    public ModelProviderConfigService() {
+        this.currentSettings = buildDefaultSettings();
+    }
+
     /**
      * 获取当前配置
      *
      * @return
      */
     public ModelProviderSettingsView getCurrentSettings() {
-        ModelProviderSettingsView modelProviderSettingsView = buildDefaultSettings();
-        return mergeOverrides(modelProviderSettingsView, modelProviderConfigRepository.findAll());
+        return currentSettings;
     }
 
     /**
@@ -228,7 +244,7 @@ public class ModelProviderConfigService {
         String normalizedScope = normalizeScope(scope);
         validateUpdateRequest(normalizedScope, request);
 
-        ScopeSettingsView existingScope = resolveScope(normalizedScope, getCurrentSettings());
+        ScopeSettingsView existingScope = resolveScope(normalizedScope, currentSettings);
         Map<String, ProviderConfigView> existingMap = toProviderMap(existingScope.getProviders());
         String currentActiveProvider = existingScope.getActiveProvider();
         ProviderConfigView currentActiveConfig = existingMap.get(currentActiveProvider);
@@ -283,9 +299,16 @@ public class ModelProviderConfigService {
             }
         }
 
-        ModelProviderSettingsView currentSettings = getCurrentSettings();
+        reloadSettings();
 
         return resolveScope(normalizedScope, currentSettings);
+    }
+
+    /**
+     * 重新加载设置
+     */
+    public synchronized void reloadSettings() {
+        this.currentSettings = mergeOverrides(buildDefaultSettings(), modelProviderConfigRepository.findAll());
     }
 
     /**
@@ -469,5 +492,224 @@ public class ModelProviderConfigService {
         }
 
         return normalized;
+    }
+
+    /**
+     * 测试指定作用域下模型提供者的连通性：LLM 调用 /chat/completions，Embedding 调用 /embeddings， 发送最小化 ping 请求并记录耗时；成功与失败均以结果视图返回，不向上抛出异常
+     *
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @param request
+     *            连接测试参数（API 地址、模型、密钥等）
+     * @return 连通性测试结果（是否成功、结果描述、耗时毫秒数）
+     */
+    public ConnectivityTestView testConnection(String scope, ProviderConnectionTestRequest request) {
+        String normalizedScope = normalizeScope(scope);
+        validateConnectionTestRequest(normalizedScope, request);
+
+        long startAt = System.currentTimeMillis();
+        String provider = normalizeOptionalProvider(request.getProvider());
+        try {
+            WebClient.Builder builder =
+                WebClient.builder().baseUrl(normalizeOpenAiCompatibleBaseUrl(request.getApiBaseUrl()))
+                    .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+
+            String apiKey = resolveConnectionTestApiKey(normalizedScope, provider, request.getApiKey());
+            if (StringUtils.isNotBlank(apiKey)) {
+                builder.defaultHeader("Authorization", "Bearer " + apiKey);
+            }
+
+            WebClient client = builder.build();
+            if (SCOPE_LLM.equals(normalizedScope)) {
+                Map<String, Object> payload = Map.of("model", request.getModel(), "messages",
+                    List.of(Map.of("role", "user", "content", "ping")), "stream", false, "max_tokens", 1);
+                client.post().uri("/chat/completions").bodyValue(payload).retrieve().bodyToMono(String.class)
+                    .block(Duration.ofSeconds(8));
+            } else {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("model", request.getModel());
+                payload.put("input", List.of("ping"));
+                payload.put("encoding_format", "float");
+
+                if (Objects.nonNull(request.getDimension())) {
+                    payload.put("dimension", request.getDimension());
+                }
+
+                client.post().uri("/embeddings").bodyValue(payload).retrieve().bodyToMono(String.class)
+                    .block(Duration.ofSeconds(8));
+            }
+
+            return new ConnectivityTestView(true, "连接成功", System.currentTimeMillis() - startAt);
+        } catch (Exception exception) {
+            return new ConnectivityTestView(false, formatConnectionFailure(provider, exception),
+                System.currentTimeMillis() - startAt);
+        }
+    }
+
+    /**
+     * 将连接测试过程中的异常转换为面向管理端的友好失败提示， 按 HTTP 状态码区分密钥无效（401/403）、地址不可用（404）、参数错误（400）等情况
+     *
+     * @param provider
+     *            提供者编码，用于匹配展示名称
+     * @param exception
+     *            连接测试抛出的异常
+     * @return 可读的失败原因描述
+     */
+    private String formatConnectionFailure(String provider, Exception exception) {
+        WebClientResponseException responseException = findResponseException(exception);
+        if (Objects.isNull(responseException)) {
+            return exception.getMessage();
+        }
+
+        int statusCode = responseException.getStatusCode().value();
+        String displayName = StringUtils.isNotBlank(provider) ? resolveProviderDisplayName(provider) : "模型";
+
+        if (statusCode == HttpStatus.UNAUTHORIZED.value() || statusCode == HttpStatus.FORBIDDEN.value()) {
+            return displayName + " API Key 无效或未填写，请检查已保存密钥，或在“新 API Key”中重新输入后再测试";
+        }
+
+        if (statusCode == HttpStatus.NOT_FOUND.value()) {
+            return displayName + " API 地址或接口路径不可用，请检查 Base URL 是否填写到 OpenAI 兼容根地址";
+        }
+
+        if (statusCode == HttpStatus.BAD_REQUEST.value()) {
+            return displayName + " 请求参数无效，请检查模型标识是否为服务商支持的 API 模型名";
+        }
+
+        return responseException.getMessage();
+    }
+
+    /**
+     * 解析 provider 的展示名称：先在 llm 作用域查找，再在 embedding 作用域查找，均未命中时返回原始编码
+     *
+     * @param provider
+     *            提供者编码
+     * @return 展示名称
+     */
+    private String resolveProviderDisplayName(String provider) {
+        return currentSettings.getLlm().getProviders().stream().filter(item -> item.getProvider().equals(provider))
+            .findFirst()
+            .or(() -> currentSettings.getEmbedding().getProviders().stream()
+                .filter(item -> item.getProvider().equals(provider)).findFirst())
+            .map(ProviderConfigView::getDisplayName).orElse(provider);
+    }
+
+    /**
+     * 沿异常调用链向下查找首个 WebClientResponseException（即服务端返回了 HTTP 响应的异常）， 用于判断失败是否由远端接口响应导致
+     *
+     * @param throwable
+     *            待排查的异常
+     * @return 找到的响应异常，不存在时返回 null
+     */
+    private WebClientResponseException findResponseException(Throwable throwable) {
+        Throwable current = throwable;
+        while (Objects.nonNull(current)) {
+            if (current instanceof WebClientResponseException responseException) {
+                return responseException;
+            }
+
+            current = current.getCause();
+        }
+
+        return null;
+    }
+
+    /**
+     * 解析连接测试使用的 API 密钥：优先取请求中明文传入的密钥；未传时若已保存配置存在密文则解密使用， 否则回退到内置默认密钥（deepseek / aliyun）
+     *
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @param provider
+     *            提供者编码，可为 null
+     * @param rawApiKey
+     *            请求中明文传入的密钥，可为空
+     * @return 可用于请求头 Authorization 的密钥，无法解析时返回 null
+     */
+    private String resolveConnectionTestApiKey(String scope, String provider, String rawApiKey) {
+        if (StringUtils.isNotBlank(rawApiKey)) {
+            return rawApiKey.trim();
+        }
+
+        if (StringUtils.isBlank(provider)) {
+            return null;
+        }
+
+        ProviderConfigView config = resolveProvider(scope, provider, currentSettings);
+        if (!config.isHasApiKey()) {
+            return null;
+        }
+
+        Optional<ModelProviderConfig> persisted =
+            modelProviderConfigRepository.findByConfigScopeAndProviderCode(scope, provider);
+        if (persisted.isPresent()) {
+            return secretCryptoService.decrypt(persisted.get().getApiKeyCiphertext());
+        }
+
+        if ("deepseek".equals(provider)) {
+            return deepSeekApiKey;
+        }
+
+        if ("aliyun".equals(provider)) {
+            return embeddingApiKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * 规范化可选的 provider，为空时返回 null 而不抛出异常
+     *
+     * @param provider
+     *            提供者编码
+     * @return 规范化结果，入参为空时返回 null
+     */
+    private String normalizeOptionalProvider(String provider) {
+        return StringUtils.isBlank(provider) ? null : normalizeProvider(provider);
+    }
+
+    /**
+     * 校验连接测试请求参数的完整性与合法性：请求体、API 地址、模型不能为空， Embedding 维度必须大于 0，已填写的 provider 必须存在于当前配置中
+     *
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @param request
+     *            连接测试参数
+     */
+    private void validateConnectionTestRequest(String scope, ProviderConnectionTestRequest request) {
+        if (Objects.isNull(request)) {
+            throw new CustomException("连接测试参数不能为空", HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isBlank(request.getApiBaseUrl())) {
+            throw new CustomException("API 地址不能为空", HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isBlank(request.getModel())) {
+            throw new CustomException("模型不能为空", HttpStatus.BAD_REQUEST);
+        }
+
+        if (SCOPE_EMBEDDING.equals(scope) && Objects.nonNull(request.getDimension()) && request.getDimension() <= 0) {
+            throw new CustomException("Embedding 维度必须大于 0", HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isNotBlank(request.getProvider())) {
+            resolveProvider(scope, normalizeProvider(request.getProvider()), currentSettings);
+        }
+    }
+
+    /**
+     * 从指定配置中查找作用域下对应的提供者配置，未命中时抛出参数异常
+     *
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @param provider
+     *            提供者编码
+     * @param settings
+     *            待查找的模型提供者配置
+     * @return 匹配的提供者配置视图
+     */
+    private ProviderConfigView resolveProvider(String scope, String provider, ModelProviderSettingsView settings) {
+        return resolveScope(scope, settings).getProviders().stream().filter(item -> item.getProvider().equals(provider))
+            .findFirst().orElseThrow(() -> new CustomException("不支持的 provider: " + provider, HttpStatus.BAD_REQUEST));
     }
 }
