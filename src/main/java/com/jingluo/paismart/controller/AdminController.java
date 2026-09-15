@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jingluo.paismart.domain.request.AdminUserRequest;
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
@@ -29,6 +30,7 @@ import com.jingluo.paismart.repository.UserRepository;
 import com.jingluo.paismart.service.ModelProviderConfigService;
 import com.jingluo.paismart.service.RateLimitConfigService;
 import com.jingluo.paismart.service.UsageDashboardService;
+import com.jingluo.paismart.service.UserService;
 import com.jingluo.paismart.utils.JwtUtils;
 
 import io.micrometer.common.util.StringUtils;
@@ -56,6 +58,9 @@ public class AdminController {
 
     @Autowired
     private ModelProviderConfigService modelProviderConfigService;
+
+    @Autowired
+    private UserService userService;
 
     /**
      * 获取所有用户列表
@@ -315,5 +320,30 @@ public class AdminController {
         validateAdmin(adminUsername);
 
         return ResponseResult.success(modelProviderConfigService.testConnection(scope, request));
+    }
+
+    /**
+     * 创建管理员用户
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param request
+     *            创建管理员请求参数（用户名、密码）
+     * @return 创建结果提示
+     */
+    @PostMapping("/users/create-admin")
+    public ResponseResult createAdminUser(@RequestHeader("Authorization") String token,
+        @RequestBody AdminUserRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        userService.createAdminUser(request.getUsername(), request.getPassword(), adminUsername);
+
+        return ResponseResult.success("管理员用户创建成功");
     }
 }

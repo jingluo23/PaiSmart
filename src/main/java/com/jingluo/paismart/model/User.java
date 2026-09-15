@@ -77,4 +77,20 @@ public class User {
      */
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    /**
+     * 创建新用户的便捷构造函数，密码需在外部完成加密后传入
+     *
+     * @param username
+     *            用户名
+     * @param encode
+     *            已加密的密码
+     * @param role
+     *            用户角色
+     */
+    public User(String username, String encode, Role role) {
+        this.username = username;
+        this.password = encode;
+        this.role = role;
+    }
 }
