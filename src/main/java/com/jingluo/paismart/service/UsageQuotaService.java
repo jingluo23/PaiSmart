@@ -223,4 +223,26 @@ public class UsageQuotaService {
         return new DailyUsageAggregate(dayString, chatRequestCount, llmUsedTokens, llmRequestCount, embeddingUsedTokens,
             embeddingRequestCount);
     }
+
+    /**
+     * 获取单个用户的使用快照，无记录时返回全零的空快照
+     *
+     * @param userId
+     * @return
+     */
+    public UserUsageSnapshot getSnapshot(String userId) {
+        Map<String, UserUsageSnapshot> snapshots = getSnapshots(List.of(userId));
+
+        return snapshots.getOrDefault(userId, emptySnapshot());
+    }
+
+    /**
+     * 构建全零的空使用快照，用于用户无任何用量记录时的兜底返回
+     *
+     * @return
+     */
+    private UserUsageSnapshot emptySnapshot() {
+        return new UserUsageSnapshot(currentDay(), 0, new QuotaView(false, 0, 0, 0, 0),
+            new QuotaView(false, 0, 0, 0, 0));
+    }
 }

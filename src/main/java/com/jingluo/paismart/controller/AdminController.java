@@ -650,6 +650,7 @@ public class AdminController {
      * @param tagId
      * @return
      */
+    @DeleteMapping("/org-tags/{tagId}")
     public ResponseResult deleteOrganizationTag(@RequestHeader("Authorization") String token,
         @PathVariable String tagId) {
         if (StringUtils.isBlank(token)) {
@@ -663,5 +664,34 @@ public class AdminController {
         userService.deleteOrganizationTag(tagId, adminUsername);
 
         return ResponseResult.success("组织标签删除成功");
+    }
+
+    /**
+     * 分页查询用户列表，支持按用户名关键词、组织标签、状态筛选
+     *
+     * @param token
+     * @param keyword
+     * @param orgTag
+     * @param status
+     * @param page
+     * @param size
+     * @return
+     */
+    @GetMapping("/users/list")
+    public ResponseResult getUserList(@RequestHeader("Authorization") String token,
+        @RequestParam(required = false) String keyword, @RequestParam(required = false) String orgTag,
+        @RequestParam(required = false) Integer status, @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "20") int size) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        Map<String, Object> usersData = userService.getUserList(keyword, orgTag, status, page, size);
+
+        return ResponseResult.success(usersData);
     }
 }

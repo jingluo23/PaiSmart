@@ -2,6 +2,7 @@ package com.jingluo.paismart.service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -16,11 +17,17 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.unit.DataSize;
 
+import com.jingluo.paismart.domain.response.UserUsageSnapshot;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.OrganizationTag;
@@ -49,6 +56,9 @@ public class UserService {
 
     @Autowired
     private OrgTagCacheService orgTagCacheService;
+
+    @Autowired
+    private UsageQuotaService usageQuotaService;
 
     /** 系统全局上传文件大小限制，读取自 spring.servlet.multipart.max-file-size 配置 */
     @Value("${spring.servlet.multipart.max-file-size:50MB}")
@@ -596,5 +606,120 @@ public class UserService {
 
         // 清除所有标签缓存，因为层级关系可能变化
         orgTagCacheService.invalidateAllEffectiveTagsCache();
+    }
+
+    /**
+     * 分页查询用户列表：先按创建时间倒序做内存过滤与分页，再为每页用户附带组织标签详情、角色状态及当日用量快照
+     *
+     * @param keyword
+     *            用户名关键词，为空表示不过滤
+     * @param orgTag
+     *            组织标签 ID，为空表示不过滤
+     * @param status
+     *            用户状态：1 表示普通用户，0 表示管理员，为空表示不过滤
+     * @param page
+     *            页码，从 1 开始，小于 1 时按 1 处理
+     * @param size
+     *            每页条数，小于等于 0 时取默认值 10
+     * @return 分页结果，包含 content、totalElements、totalPages、size、number（从 1 开始的页码）
+     */
+    public Map<String, Object> getUserList(String keyword, String orgTag, Integer status, int page, int size) {
+        int safePage = Math.max(page, 1);
+
+        int safeSize = size > 0 ? size : 10;
+
+        int pageIndex = safePage - 1;
+
+        Pageable pageable = PageRequest.of(pageIndex, safeSize, Sort.by("createdAt").descending());
+
+        List<User> filteredUsers = userRepository.findAll(Sort.by("createdAt").descending()).stream()
+            .filter(user -> matchesUserListFilters(user, keyword, orgTag, status)).toList();
+
+        int start = Math.min((int)pageable.getOffset(), filteredUsers.size());
+
+        int end = Math.min(start + pageable.getPageSize(), filteredUsers.size());
+
+        List<User> pageContent = start < end ? filteredUsers.subList(start, end) : Collections.emptyList();
+
+        Page<User> userPage = new PageImpl<>(pageContent, pageable, filteredUsers.size());
+
+        // 转换为前端需要的格式
+        Map<String, UserUsageSnapshot> usageSnapshots = usageQuotaService
+            .getSnapshots(userPage.getContent().stream().map(user -> String.valueOf(user.getId())).toList());
+
+        List<Map<String, Object>> userList = userPage.getContent().stream().map(user -> {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("userId", user.getId());
+            userMap.put("username", user.getUsername());
+
+            // 获取用户组织标签的详细信息
+            List<Map<String, String>> orgTagDetails = new ArrayList<>();
+            if (user.getOrgTags() != null && !user.getOrgTags().isEmpty()) {
+                Arrays.stream(user.getOrgTags().split(",")).forEach(tagId -> {
+                    OrganizationTag tag = organizationTagRepository.findByTagId(tagId).orElse(null);
+                    if (tag != null) {
+                        Map<String, String> tagInfo = new HashMap<>();
+                        tagInfo.put("tagId", tag.getTagId());
+                        tagInfo.put("name", tag.getName());
+                        orgTagDetails.add(tagInfo);
+                    }
+                });
+            }
+
+            userMap.put("orgTags", orgTagDetails);
+            userMap.put("primaryOrg", user.getPrimaryOrg());
+            userMap.put("status", user.getRole() == Role.USER ? 1 : 0);
+            userMap.put("createdAt", user.getCreatedAt());
+            userMap.put("usage", usageSnapshots.getOrDefault(String.valueOf(user.getId()),
+                usageQuotaService.getSnapshot(String.valueOf(user.getId()))));
+
+            return userMap;
+        }).collect(Collectors.toList());
+
+        // 构建返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("content", userList);
+        result.put("totalElements", userPage.getTotalElements());
+        result.put("totalPages", userPage.getTotalPages());
+        result.put("size", userPage.getSize());
+        result.put("number", userPage.getNumber() + 1); // 转换为从1开始的页码
+
+        return result;
+    }
+
+    /**
+     * 判断用户是否匹配用户列表的筛选条件：依次校验组织标签包含关系、用户名关键词、角色状态， 全部通过才返回 true
+     *
+     * @param user
+     *            待检查的用户
+     * @param keyword
+     *            用户名关键词
+     * @param orgTag
+     *            组织标签 ID
+     * @param status
+     *            用户状态：1 表示普通用户，0 表示管理员
+     * @return true 表示匹配所有已指定的筛选条件
+     */
+    private boolean matchesUserListFilters(User user, String keyword, String orgTag, Integer status) {
+        if (StringUtils.isNotBlank(orgTag)) {
+            if (StringUtils.isBlank(user.getOrgTags())) {
+                return Boolean.FALSE;
+            }
+
+            Set<String> userTags = new HashSet<>(Arrays.asList(user.getOrgTags().split(",")));
+            if (!userTags.contains(orgTag)) {
+                return Boolean.FALSE;
+            }
+        }
+
+        if (StringUtils.isNotBlank(keyword) && !user.getUsername().contains(keyword)) {
+            return Boolean.FALSE;
+        }
+
+        if (Objects.nonNull(status)) {
+            return user.getRole() == (status == 1 ? Role.USER : Role.ADMIN);
+        }
+
+        return Boolean.TRUE;
     }
 }
