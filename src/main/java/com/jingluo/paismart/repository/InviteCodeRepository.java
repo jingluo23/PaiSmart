@@ -2,6 +2,8 @@ package com.jingluo.paismart.repository;
 
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.jingluo.paismart.model.InviteCode;
@@ -21,4 +23,15 @@ public interface InviteCodeRepository extends JpaRepository<InviteCode, Long> {
      * @return 匹配的邀请码
      */
     Optional<InviteCode> findByCode(String code);
+
+    /**
+     * 分页查询指定启用状态的邀请码
+     *
+     * @param enabled
+     *            启用状态
+     * @param pageable
+     *            分页参数
+     * @return 匹配的邀请码分页结果
+     */
+    Page<InviteCode> findByEnabled(Boolean enabled, Pageable pageable);
 }

@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.jingluo.paismart.domain.request.AdminUserRequest;
 import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
+import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
@@ -376,5 +378,108 @@ public class AdminController {
             request.getCount());
 
         return ResponseResult.success(created);
+    }
+
+    /**
+     * 分页查询邀请码列表
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param enabled
+     *            启用状态筛选（可选，为空表示查询全部）
+     * @param page
+     *            页码（默认 1）
+     * @param size
+     *            每页数量（默认 20）
+     * @return 邀请码分页列表
+     */
+    @GetMapping("/invite-codes")
+    public ResponseResult listInviteCodes(@RequestHeader("Authorization") String token,
+        @RequestParam(required = false) Boolean enabled, @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "20") int size) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(inviteCodeService.list(enabled, page, size));
+    }
+
+    /**
+     * 禁用邀请码
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param id
+     *            邀请码 ID
+     * @return 禁用结果提示
+     */
+    @PatchMapping("/invite-codes/{id}/disable")
+    public ResponseResult disableInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        inviteCodeService.disable(id, adminUsername);
+
+        return ResponseResult.success("邀请码已禁用");
+    }
+
+    /**
+     * 删除邀请码
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param id
+     *            邀请码 ID
+     * @return 删除结果提示
+     */
+    @DeleteMapping("/invite-codes/{id}")
+    public ResponseResult deleteInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        inviteCodeService.delete(id, adminUsername);
+
+        return ResponseResult.success("邀请码已删除");
+    }
+
+    /**
+     * 编辑邀请码
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param id
+     *            邀请码 ID
+     * @param request
+     *            更新邀请码请求参数（新的邀请码字符串、最大可用次数）
+     * @return 更新后的邀请码
+     */
+    @PutMapping("/invite-codes/{id}")
+    public ResponseResult updateInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id,
+        @RequestBody UpdateInviteCodeRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        var updated = inviteCodeService.update(id, adminUsername, request.getCode(), request.getMaxUses(), null);
+
+        return ResponseResult.success(updated);
     }
 }

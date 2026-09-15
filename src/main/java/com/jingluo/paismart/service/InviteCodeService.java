@@ -5,13 +5,17 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
@@ -60,7 +64,6 @@ public class InviteCodeService {
      *            批量创建数量（可选，默认 1，最大 100）
      * @return 创建成功的邀请码列表
      */
-    @Transactional
     public List<InviteCode> createInviteCodes(String creatorUsername, String requestedCode, Integer maxUses,
         LocalDateTime expiresAt, Integer count) {
         User creator = userRepository.findByUsername(creatorUsername)
@@ -95,12 +98,6 @@ public class InviteCodeService {
             InviteCode inviteCode =
                 new InviteCode(code, normalizedMaxUses, 0, normalizedExpiresAt, Boolean.TRUE, creator);
 
-            inviteCode.setCode(code);
-            inviteCode.setMaxUses(normalizedMaxUses);
-            inviteCode.setUsedCount(0);
-            inviteCode.setExpiresAt(normalizedExpiresAt);
-            inviteCode.setEnabled(true);
-            inviteCode.setCreatedBy(creator);
             inviteCodes.add(inviteCode);
             generatedCodes.add(code);
         }
@@ -168,5 +165,129 @@ public class InviteCodeService {
         }
 
         return code.trim().toUpperCase();
+    }
+
+    /**
+     * 分页查询邀请码列表
+     * <p>
+     * 支持按启用状态筛选，结果按创建时间倒序排列，未指定启用状态时查询全部邀请码。
+     *
+     * @param enabled
+     *            启用状态筛选（可选，为空表示查询全部）
+     * @param page
+     *            页码（从 1 开始）
+     * @param size
+     *            每页数量（最小 1）
+     * @return 分页结果，包含记录列表、总条数、总页数、当前页码和每页数量
+     */
+    public Map<String, Object> list(Boolean enabled, int page, int size) {
+        Pageable pageable =
+            PageRequest.of(Math.max(0, page - 1), Math.max(1, size), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<InviteCode> result = Objects.isNull(enabled) ? inviteCodeRepository.findAll(pageable)
+            : inviteCodeRepository.findByEnabled(enabled, pageable);
+
+        return Map.of("records", result.getContent(), "total", result.getTotalElements(), "pages",
+            result.getTotalPages(), "current", page, "size", size);
+    }
+
+    /**
+     * 禁用邀请码
+     * <p>
+     * 仅管理员可操作，禁用后邀请码无法继续使用。
+     *
+     * @param id
+     *            邀请码 ID
+     * @param adminUsername
+     *            操作人用户名（须为管理员）
+     */
+    public void disable(Long id, String adminUsername) {
+        validateAdmin(adminUsername, "禁用");
+
+        InviteCode inviteCode =
+            inviteCodeRepository.findById(id).orElseThrow(() -> new CustomException("未找到邀请码", HttpStatus.NOT_FOUND));
+        inviteCode.setEnabled(false);
+
+        inviteCodeRepository.save(inviteCode);
+    }
+
+    /**
+     * 校验操作人是否为管理员
+     *
+     * @param adminUsername
+     *            操作人用户名
+     * @param action
+     *            操作名称，用于构造无权限时的提示信息
+     */
+    private void validateAdmin(String adminUsername, String action) {
+        User admin = userRepository.findByUsername(adminUsername)
+            .orElseThrow(() -> new CustomException("未找到管理员", HttpStatus.NOT_FOUND));
+
+        if (admin.getRole() != Role.ADMIN) {
+            throw new CustomException("只有管理员可以" + action + " 邀请码", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    /**
+     * 删除邀请码
+     * <p>
+     * 仅管理员可操作，直接从数据库中移除该邀请码记录。
+     *
+     * @param id
+     *            邀请码 ID
+     * @param adminUsername
+     *            操作人用户名（须为管理员）
+     */
+    public void delete(Long id, String adminUsername) {
+        validateAdmin(adminUsername, "删除");
+
+        InviteCode inviteCode =
+            inviteCodeRepository.findById(id).orElseThrow(() -> new CustomException("未找到邀请码", HttpStatus.NOT_FOUND));
+
+        inviteCodeRepository.delete(inviteCode);
+    }
+
+    /**
+     * 编辑邀请码
+     * <p>
+     * 仅管理员可操作。已使用过的邀请码不允许编辑；新邀请码字符串会做规范化处理并通过唯一性校验。
+     *
+     * @param id
+     *            邀请码 ID
+     * @param adminUsername
+     *            操作人用户名（须为管理员）
+     * @param code
+     *            新的邀请码字符串
+     * @param maxUses
+     *            新的最大可用次数（可选，默认 1）
+     * @param expiresAt
+     *            新的过期时间（可选，为空表示保持不变，须晚于当前时间）
+     * @return 更新后的邀请码
+     */
+    public InviteCode update(Long id, String adminUsername, String code, Integer maxUses, LocalDateTime expiresAt) {
+        validateAdmin(adminUsername, "编辑");
+
+        InviteCode inviteCode =
+            inviteCodeRepository.findById(id).orElseThrow(() -> new CustomException("未找到邀请码", HttpStatus.NOT_FOUND));
+
+        if (inviteCode.getUsedCount() > 0) {
+            throw new CustomException("已使用的邀请码无法编辑", HttpStatus.BAD_REQUEST);
+        }
+
+        String normalizedCode = normalizeCode(code);
+        InviteCode existingInviteCode = inviteCodeRepository.findByCode(normalizedCode).orElse(null);
+        if (Objects.nonNull(existingInviteCode) && !existingInviteCode.getId().equals(id)) {
+            throw new CustomException("邀请码已存在", HttpStatus.BAD_REQUEST);
+        }
+
+        int normalizedMaxUses = Objects.isNull(maxUses) || maxUses <= 0 ? 1 : maxUses;
+        if (Objects.nonNull(expiresAt) && expiresAt.isBefore(LocalDateTime.now())) {
+            throw new CustomException("邀请码的有效期必须设定在将来", HttpStatus.BAD_REQUEST);
+        }
+
+        inviteCode.setCode(normalizedCode);
+        inviteCode.setMaxUses(normalizedMaxUses);
+        inviteCode.setExpiresAt(expiresAt);
+
+        return inviteCodeRepository.save(inviteCode);
     }
 }
