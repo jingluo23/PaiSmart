@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.jingluo.paismart.domain.request.AdminUserRequest;
+import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.ResponseResult;
@@ -27,6 +28,7 @@ import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
+import com.jingluo.paismart.service.InviteCodeService;
 import com.jingluo.paismart.service.ModelProviderConfigService;
 import com.jingluo.paismart.service.RateLimitConfigService;
 import com.jingluo.paismart.service.UsageDashboardService;
@@ -61,6 +63,9 @@ public class AdminController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private InviteCodeService inviteCodeService;
 
     /**
      * 获取所有用户列表
@@ -345,5 +350,31 @@ public class AdminController {
         userService.createAdminUser(request.getUsername(), request.getPassword(), adminUsername);
 
         return ResponseResult.success("管理员用户创建成功");
+    }
+
+    /**
+     * 创建邀请码
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param request
+     *            创建邀请码请求参数（自定义邀请码、最大可用次数、批量数量）
+     * @return 创建成功的邀请码列表
+     */
+    @PostMapping("/invite-codes")
+    public ResponseResult createInviteCode(@RequestHeader("Authorization") String token,
+        @RequestBody CreateInviteCodeRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        var created = inviteCodeService.createInviteCodes(adminUsername, request.getCode(), request.getMaxUses(), null,
+            request.getCount());
+
+        return ResponseResult.success(created);
     }
 }
