@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 import com.jingluo.paismart.model.InviteCode;
 
@@ -13,6 +14,7 @@ import com.jingluo.paismart.model.InviteCode;
  * @Date: 2026/9/15 15:47
  * @Desc: 邀请码数据访问层
  */
+@Repository
 public interface InviteCodeRepository extends JpaRepository<InviteCode, Long> {
 
     /**

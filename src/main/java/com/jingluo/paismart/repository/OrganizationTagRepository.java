@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 import com.jingluo.paismart.model.OrganizationTag;
 
@@ -12,6 +13,7 @@ import com.jingluo.paismart.model.OrganizationTag;
  * @Date: 2026/9/15 16:29
  * @Desc: 组织标签数据访问接口
  */
+@Repository
 public interface OrganizationTagRepository extends JpaRepository<OrganizationTag, String> {
 
     /**

@@ -1,26 +1,6 @@
 package com.jingluo.paismart.controller;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
-
+import com.jingluo.paismart.domain.request.AddUserTokenRequest;
 import com.jingluo.paismart.domain.request.AdminUserRequest;
 import com.jingluo.paismart.domain.request.AssignOrgTagsRequest;
 import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
@@ -40,10 +20,31 @@ import com.jingluo.paismart.service.InviteCodeService;
 import com.jingluo.paismart.service.ModelProviderConfigService;
 import com.jingluo.paismart.service.RateLimitConfigService;
 import com.jingluo.paismart.service.UsageDashboardService;
+import com.jingluo.paismart.service.UsageQuotaService;
 import com.jingluo.paismart.service.UserService;
+import com.jingluo.paismart.service.UserTokenService;
 import com.jingluo.paismart.utils.JwtUtils;
-
 import io.micrometer.common.util.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author 鲸落
@@ -77,6 +78,12 @@ public class AdminController {
 
     @Autowired
     private OrganizationTagRepository organizationTagRepository;
+
+    @Autowired
+    private UserTokenService userTokenService;
+
+    @Autowired
+    private UsageQuotaService usageQuotaService;
 
     /**
      * 获取所有用户列表
@@ -693,5 +700,79 @@ public class AdminController {
         Map<String, Object> usersData = userService.getUserList(keyword, orgTag, status, page, size);
 
         return ResponseResult.success(usersData);
+    }
+
+    /**
+     * 管理员为指定用户追加 Token 额度（LLM / Embedding 可同时追加至少一种）
+     *
+     * @param token
+     *            管理员登录凭证
+     * @param userId
+     *            目标用户 ID
+     * @param request
+     *            追加 Token 请求参数（LLM 数量、Embedding 数量、追加原因）
+     * @return 目标用户信息及追加后的用量快照
+     */
+    @PostMapping("/users/{userId}/tokens/add")
+    public ResponseResult addUserTokens(@RequestHeader("Authorization") String token, @PathVariable Long userId,
+        @RequestBody AddUserTokenRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        User targetUser =
+            userRepository.findById(userId).orElseThrow(() -> new CustomException("目标用户不存在", HttpStatus.NOT_FOUND));
+
+        long llmToken = Objects.isNull(request.getLlmToken()) ? 0L : request.getLlmToken();
+
+        long embeddingToken = Objects.isNull(request.getEmbeddingToken()) ? 0L : request.getEmbeddingToken();
+
+        if (llmToken < 0 || embeddingToken < 0) {
+            throw new CustomException("追加 Token 数量不能为负数", HttpStatus.BAD_REQUEST);
+        }
+
+        if (llmToken == 0 && embeddingToken == 0) {
+            throw new CustomException("请至少追加一种 Token 额度", HttpStatus.BAD_REQUEST);
+        }
+
+        String userIdText = String.valueOf(userId);
+        String reason = normalizeManualTokenReason(request.getReason());
+        String remark = "admin=" + adminUsername;
+
+        if (llmToken > 0) {
+            userTokenService.addLlmTokens(userIdText, llmToken, reason, remark);
+        }
+
+        if (embeddingToken > 0) {
+            userTokenService.addEmbeddingTokens(userIdText, embeddingToken, reason, remark);
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", userId);
+        data.put("username", targetUser.getUsername());
+        data.put("usage", usageQuotaService.getSnapshot(userIdText));
+
+        return ResponseResult.success(data);
+    }
+
+    /**
+     * 规范化手动追加 Token 的原因描述，为空时使用默认文案，超长时截断至 200 字符
+     *
+     * @param reason
+     *            追加原因（可选）
+     * @return 规范化后的原因描述
+     */
+    private String normalizeManualTokenReason(String reason) {
+        if (StringUtils.isBlank(reason)) {
+            return "管理员手动追加";
+        }
+
+        String trimmed = reason.trim();
+
+        return trimmed.length() > 200 ? trimmed.substring(0, 200) : trimmed;
     }
 }
