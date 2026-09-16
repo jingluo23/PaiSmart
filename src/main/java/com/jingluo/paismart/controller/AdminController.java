@@ -31,6 +31,7 @@ import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.OrgTagRequest;
 import com.jingluo.paismart.domain.request.OrgTagUpdateRequest;
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
+import com.jingluo.paismart.domain.request.RechargePackageRequest;
 import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.MigrationReport;
@@ -38,8 +39,10 @@ import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.OrganizationTag;
+import com.jingluo.paismart.model.RechargePackage;
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.OrganizationTagRepository;
+import com.jingluo.paismart.repository.RechargePackageRepository;
 import com.jingluo.paismart.repository.UserRepository;
 import com.jingluo.paismart.service.ConversationService;
 import com.jingluo.paismart.service.InviteCodeService;
@@ -98,6 +101,9 @@ public class AdminController {
 
     @Autowired
     private MinioMigrationUtil minioMigrationUtil;
+
+    @Autowired
+    private RechargePackageRepository rechargePackageRepository;
 
     /**
      * 获取所有用户列表
@@ -969,5 +975,146 @@ public class AdminController {
         minioMigrationUtil.clearAllData();
 
         return ResponseResult.success("所有数据已清空");
+    }
+
+    /**
+     * 获取所有充值套餐列表（按排序字段升序）
+     *
+     * @param token
+     * @return
+     */
+    @GetMapping("/recharge-packages")
+    public ResponseResult getAllRechargePackages(@RequestHeader("Authorization") String token) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        List<RechargePackage> packages = rechargePackageRepository.findAllByDeletedFalseOrderBySortOrderAsc();
+
+        return ResponseResult.success(packages);
+    }
+
+    /**
+     * 创建充值套餐
+     *
+     * @param token
+     * @param request
+     * @return
+     */
+    @PostMapping("/recharge-packages")
+    public ResponseResult createRechargePackage(@RequestHeader("Authorization") String token,
+        @RequestBody @Validated RechargePackageRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        RechargePackage pkg = new RechargePackage(request.getPackageName(), request.getPackagePrice(),
+            request.getPackageDesc(), request.getPackageBenefit(), request.getLlmToken(), request.getEmbeddingToken(),
+            Objects.nonNull(request.getEnabled()) ? request.getEnabled() : true,
+            Objects.nonNull(request.getSortOrder()) ? request.getSortOrder() : 0, false);
+
+        pkg = rechargePackageRepository.save(pkg);
+
+        return ResponseResult.success(pkg);
+    }
+
+    /**
+     * 更新充值套餐（仅更新请求中非空的字段）
+     *
+     * @param token
+     * @param id
+     * @param request
+     * @return
+     */
+    @PutMapping("/recharge-packages/{id}")
+    public ResponseResult updateRechargePackage(@RequestHeader("Authorization") String token, @PathVariable Integer id,
+        @RequestBody RechargePackageRequest request) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        RechargePackage pkg = rechargePackageRepository.findById(id)
+            .orElseThrow(() -> new CustomException("套餐不存在", HttpStatus.BAD_REQUEST));
+
+        // 更新字段
+        if (StringUtils.isNotBlank(request.getPackageName())) {
+            pkg.setPackageName(request.getPackageName());
+        }
+
+        if (Objects.nonNull(request.getPackagePrice())) {
+            pkg.setPackagePrice(request.getPackagePrice());
+        }
+
+        if (StringUtils.isNotBlank(request.getPackageDesc())) {
+            pkg.setPackageDesc(request.getPackageDesc());
+        }
+
+        if (StringUtils.isNotBlank(request.getPackageBenefit())) {
+            pkg.setPackageBenefit(request.getPackageBenefit());
+        }
+
+        if (Objects.nonNull(request.getLlmToken())) {
+            pkg.setLlmToken(request.getLlmToken());
+        }
+
+        if (Objects.nonNull(request.getEmbeddingToken())) {
+            pkg.setEmbeddingToken(request.getEmbeddingToken());
+        }
+
+        if (Objects.nonNull(request.getEnabled())) {
+            pkg.setEnabled(request.getEnabled());
+        }
+
+        if (Objects.nonNull(request.getSortOrder())) {
+            pkg.setSortOrder(request.getSortOrder());
+        }
+
+        pkg.setUpdatedAt(LocalDateTime.now());
+
+        pkg = rechargePackageRepository.save(pkg);
+
+        return ResponseResult.success(pkg);
+    }
+
+    /**
+     * 删除充值套餐（逻辑删除）
+     *
+     * @param token
+     * @param id
+     * @return
+     */
+    @DeleteMapping("/recharge-packages/{id}")
+    public ResponseResult deleteRechargePackage(@RequestHeader("Authorization") String token,
+        @PathVariable Integer id) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        RechargePackage pkg = rechargePackageRepository.findById(id)
+            .orElseThrow(() -> new CustomException("套餐不存在", HttpStatus.BAD_REQUEST));
+
+        // 逻辑删除：设置 deleted=true
+        pkg.setDeleted(true);
+        pkg.setUpdatedAt(LocalDateTime.now());
+
+        rechargePackageRepository.save(pkg);
+
+        return ResponseResult.success("删除充值套餐成功");
     }
 }
