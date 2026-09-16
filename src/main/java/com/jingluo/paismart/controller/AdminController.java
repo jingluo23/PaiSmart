@@ -1,30 +1,13 @@
 package com.jingluo.paismart.controller;
 
-import com.jingluo.paismart.domain.request.AddUserTokenRequest;
-import com.jingluo.paismart.domain.request.AdminUserRequest;
-import com.jingluo.paismart.domain.request.AssignOrgTagsRequest;
-import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
-import com.jingluo.paismart.domain.request.OrgTagRequest;
-import com.jingluo.paismart.domain.request.OrgTagUpdateRequest;
-import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
-import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
-import com.jingluo.paismart.domain.request.UpdateScopeRequest;
-import com.jingluo.paismart.domain.response.ResponseResult;
-import com.jingluo.paismart.enums.Role;
-import com.jingluo.paismart.exception.CustomException;
-import com.jingluo.paismart.model.OrganizationTag;
-import com.jingluo.paismart.model.User;
-import com.jingluo.paismart.repository.OrganizationTagRepository;
-import com.jingluo.paismart.repository.UserRepository;
-import com.jingluo.paismart.service.InviteCodeService;
-import com.jingluo.paismart.service.ModelProviderConfigService;
-import com.jingluo.paismart.service.RateLimitConfigService;
-import com.jingluo.paismart.service.UsageDashboardService;
-import com.jingluo.paismart.service.UsageQuotaService;
-import com.jingluo.paismart.service.UserService;
-import com.jingluo.paismart.service.UserTokenService;
-import com.jingluo.paismart.utils.JwtUtils;
-import io.micrometer.common.util.StringUtils;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -41,10 +24,35 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import com.jingluo.paismart.domain.request.AddUserTokenRequest;
+import com.jingluo.paismart.domain.request.AdminUserRequest;
+import com.jingluo.paismart.domain.request.AssignOrgTagsRequest;
+import com.jingluo.paismart.domain.request.CreateInviteCodeRequest;
+import com.jingluo.paismart.domain.request.OrgTagRequest;
+import com.jingluo.paismart.domain.request.OrgTagUpdateRequest;
+import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
+import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
+import com.jingluo.paismart.domain.request.UpdateScopeRequest;
+import com.jingluo.paismart.domain.response.MigrationReport;
+import com.jingluo.paismart.domain.response.ResponseResult;
+import com.jingluo.paismart.enums.Role;
+import com.jingluo.paismart.exception.CustomException;
+import com.jingluo.paismart.model.OrganizationTag;
+import com.jingluo.paismart.model.User;
+import com.jingluo.paismart.repository.OrganizationTagRepository;
+import com.jingluo.paismart.repository.UserRepository;
+import com.jingluo.paismart.service.ConversationService;
+import com.jingluo.paismart.service.InviteCodeService;
+import com.jingluo.paismart.service.ModelProviderConfigService;
+import com.jingluo.paismart.service.RateLimitConfigService;
+import com.jingluo.paismart.service.UsageDashboardService;
+import com.jingluo.paismart.service.UsageQuotaService;
+import com.jingluo.paismart.service.UserService;
+import com.jingluo.paismart.service.UserTokenService;
+import com.jingluo.paismart.utils.JwtUtils;
+import com.jingluo.paismart.utils.MinioMigrationUtil;
+
+import io.micrometer.common.util.StringUtils;
 
 /**
  * @author 鲸落
@@ -84,6 +92,12 @@ public class AdminController {
 
     @Autowired
     private UsageQuotaService usageQuotaService;
+
+    @Autowired
+    private ConversationService conversationService;
+
+    @Autowired
+    private MinioMigrationUtil minioMigrationUtil;
 
     /**
      * 获取所有用户列表
@@ -774,5 +788,157 @@ public class AdminController {
         String trimmed = reason.trim();
 
         return trimmed.length() > 200 ? trimmed.substring(0, 200) : trimmed;
+    }
+
+    /**
+     * 获取对话记录，支持按用户ID和时间范围过滤
+     *
+     * @param token
+     *            管理员登录令牌
+     * @param userid
+     *            目标用户ID，为空时查询所有用户的对话
+     * @param start_date
+     *            开始时间，支持秒级、分钟级、小时级、日期级格式
+     * @param end_date
+     *            结束时间，格式同开始时间，解析时自动补齐到对应时间粒度的末秒
+     * @return 按时间正序排列的对话消息列表
+     */
+    @GetMapping("/conversation")
+    public ResponseResult getAllConversations(@RequestHeader("Authorization") String token,
+        @RequestParam(required = false) String userid, @RequestParam(required = false) String start_date,
+        @RequestParam(required = false) String end_date) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        String targetUsername = null;
+        if (StringUtils.isNotBlank(userid)) {
+            try {
+                Long userIdLong = Long.parseLong(userid);
+                Optional<User> targetUser = userRepository.findById(userIdLong);
+                if (targetUser.isPresent()) {
+                    targetUsername = targetUser.get().getUsername();
+                } else {
+                    return ResponseResult.fail(HttpStatus.NOT_FOUND.value(), "目标用户不存在");
+                }
+            } catch (NumberFormatException e) {
+                return ResponseResult.fail(HttpStatus.BAD_REQUEST.value(), "无效的用户ID格式");
+            }
+        }
+
+        LocalDateTime startDateTime = parseStartDate(start_date);
+
+        LocalDateTime endDateTime = parseEndDate(end_date);
+
+        List<Map<String, Object>> allConversations = conversationService.toMessageHistory(
+            conversationService.getAllConversations(adminUsername, targetUsername, startDateTime, endDateTime), true);
+
+        return ResponseResult.success(allConversations);
+    }
+
+    /**
+     * 解析结束时间字符串，支持多种精度格式，并自动补齐到对应时间粒度的末秒：
+     * 日期级取当天 23:59:59，小时级取该小时 59 分 59 秒，分钟级取该分钟 59 秒
+     *
+     * @param dateTimeStr
+     *            结束时间字符串，支持 yyyy-MM-dd、yyyy-MM-ddTHH、yyyy-MM-ddTHH:mm、yyyy-MM-ddTHH:mm:ss 格式
+     * @return 解析后的结束时间，入参为空时返回 null
+     */
+    private LocalDateTime parseEndDate(String dateTimeStr) {
+        if (StringUtils.isBlank(dateTimeStr) || dateTimeStr.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return LocalDateTime.parse(dateTimeStr);
+        } catch (java.time.format.DateTimeParseException e1) {
+            try {
+                if (dateTimeStr.length() == 16) {
+                    return LocalDateTime.parse(dateTimeStr + ":59");
+                }
+
+                if (dateTimeStr.length() == 13) {
+                    return LocalDateTime.parse(dateTimeStr + ":59:59");
+                }
+
+                if (dateTimeStr.length() == 10) {
+                    return LocalDate.parse(dateTimeStr).plusDays(1).atStartOfDay().minusSeconds(1);
+                }
+            } catch (Exception e2) {
+                throw new CustomException("无效的结束时间格式: " + dateTimeStr, HttpStatus.BAD_REQUEST);
+            }
+        }
+
+        throw new CustomException("无效的结束时间格式: " + dateTimeStr, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 解析起始时间字符串，支持多种精度格式，并自动补齐到对应时间粒度的起始时刻：
+     * 日期级取当天 00:00:00，小时级取该小时 00 分 00 秒，分钟级取该分钟 00 秒
+     *
+     * @param dateTimeStr
+     *            起始时间字符串，支持 yyyy-MM-dd、yyyy-MM-ddTHH、yyyy-MM-ddTHH:mm、yyyy-MM-ddTHH:mm:ss 格式
+     * @return 解析后的起始时间，入参为空时返回 null
+     */
+    private LocalDateTime parseStartDate(String dateTimeStr) {
+        if (StringUtils.isBlank(dateTimeStr) || dateTimeStr.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return LocalDateTime.parse(dateTimeStr);
+        } catch (java.time.format.DateTimeParseException e1) {
+            try {
+                if (dateTimeStr.length() == 16) {
+                    return LocalDateTime.parse(dateTimeStr + ":00");
+                }
+
+                if (dateTimeStr.length() == 13) {
+                    return LocalDateTime.parse(dateTimeStr + ":00:00");
+                }
+
+                if (dateTimeStr.length() == 10) {
+                    return LocalDate.parse(dateTimeStr).atStartOfDay();
+                }
+            } catch (Exception e2) {
+                throw new CustomException("无效的起始时间格式: " + dateTimeStr, HttpStatus.BAD_REQUEST);
+            }
+        }
+
+        throw new CustomException("无效的起始时间格式: " + dateTimeStr, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 触发 MinIO 文件迁移，将按文件名存储的历史对象迁移为按文件 MD5 存储
+     *
+     * @param token
+     *            管理员登录令牌
+     * @param adminKey
+     *            管理员密钥，用于二次确认
+     * @return 迁移结果报告，包含成功、跳过、失败数量及错误明细
+     */
+    @PostMapping("/migrate-minio")
+    public ResponseResult migrateMinioFiles(@RequestHeader("Authorization") String token,
+        @RequestParam String adminKey) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        // 简单密钥验证
+        if (!"migration2024".equals(adminKey)) {
+            return ResponseResult.fail(HttpStatus.FORBIDDEN.value(), "无效的管理员密钥");
+        }
+
+        MigrationReport report = minioMigrationUtil.migrateAllFiles();
+
+        return ResponseResult.success(report);
     }
 }
