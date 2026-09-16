@@ -941,4 +941,33 @@ public class AdminController {
 
         return ResponseResult.success(report);
     }
+
+    /**
+     * 清空全部业务数据，删除 ES knowledge_base 索引文档、MySQL 文件上传记录及 MinIO uploads 桶 merged 目录下的对象，属于高危操作
+     *
+     * @param token
+     *            管理员登录令牌
+     * @param adminKey
+     *            管理员密钥，用于高危操作的二次确认
+     * @return 清空结果提示
+     */
+    @PostMapping("/clear-all-data")
+    public ResponseResult clearAllData(@RequestHeader("Authorization") String token, @RequestParam String adminKey) {
+        if (StringUtils.isBlank(token)) {
+            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
+        }
+
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        // 更严格的密钥验证
+        if (!"CLEAR_ALL_2024".equals(adminKey)) {
+            return ResponseResult.fail(HttpStatus.FORBIDDEN.value(), "无效的管理员密钥");
+        }
+
+        minioMigrationUtil.clearAllData();
+
+        return ResponseResult.success("所有数据已清空");
+    }
 }

@@ -9,6 +9,9 @@ import com.jingluo.paismart.domain.response.MigrationReport;
 import com.jingluo.paismart.model.FileUpload;
 import com.jingluo.paismart.repository.FileUploadRepository;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch.core.DeleteByQueryRequest;
 import io.minio.CopyObjectArgs;
 import io.minio.CopySource;
 import io.minio.MinioClient;
@@ -31,6 +34,9 @@ public class MinioMigrationUtil {
 
     @Autowired
     private MinioClient minioClient;
+
+    @Autowired
+    private ElasticsearchClient elasticsearchClient;
 
     /**
      * 迁移全部文件，遍历所有文件上传记录并逐一执行迁移
@@ -92,7 +98,8 @@ public class MinioMigrationUtil {
 
             report.addSuccess();
         } catch (Exception e) {
-            log.error("迁移失败: {}", file.getFileName(), e);
+            log.warn("迁移失败: {}", file.getFileName(), e);
+
             report.addError(file.getFileName(), e.getMessage());
         }
     }
@@ -118,6 +125,40 @@ public class MinioMigrationUtil {
             }
 
             throw e;
+        }
+    }
+
+    /**
+     * 清空全部业务数据：按顺序删除 ES knowledge_base 索引的全部文档、清空 MySQL 文件上传记录表， 再依据文件记录清理 MinIO uploads 桶 merged 目录下按 MD5 与按文件名存储的两类对象
+     */
+    public void clearAllData() {
+        try {
+            // 1. 清空 ElasticSearch
+            DeleteByQueryRequest deleteRequest =
+                DeleteByQueryRequest.of(d -> d.index("knowledge_base").query(Query.of(q -> q.matchAll(m -> m))));
+            elasticsearchClient.deleteByQuery(deleteRequest);
+
+            // 2. 清空 MySQL 表
+            fileUploadRepository.deleteAll();
+
+            // 3. 清空 MinIO merged 目录
+            List<FileUpload> files = fileUploadRepository.findAll();
+            for (FileUpload file : files) {
+                try {
+                    minioClient.removeObject(
+                        RemoveObjectArgs.builder().bucket("uploads").object("merged/" + file.getFileMd5()).build());
+                } catch (Exception e) {
+                    // 忽略错误
+                }
+                try {
+                    minioClient.removeObject(
+                        RemoveObjectArgs.builder().bucket("uploads").object("merged/" + file.getFileName()).build());
+                } catch (Exception e) {
+                    // 忽略错误
+                }
+            }
+        } catch (Exception e) {
+            log.warn("清空数据时出错", e);
         }
     }
 }
