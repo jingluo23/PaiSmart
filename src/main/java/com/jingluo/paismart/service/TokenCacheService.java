@@ -3,11 +3,14 @@ package com.jingluo.paismart.service;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,6 +40,11 @@ public class TokenCacheService {
      * 用户持有令牌集合在 Redis 中的 key 前缀
      */
     private static final String USER_TOKENS_PREFIX = "jwt:user:";
+
+    /**
+     * 黑名单令牌在 Redis 中的 key 前缀，用于记录被主动吊销的令牌
+     */
+    private static final String BLACKLIST_PREFIX = "jwt:blacklist:";
 
     /**
      * 判断刷新令牌在 Redis 缓存中是否有效
@@ -145,6 +153,96 @@ public class TokenCacheService {
             redisTemplate.opsForValue().set(key, refreshInfo, ttlSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("未能缓存刷新令牌: {}", refreshTokenId, e);
+        }
+    }
+
+    /**
+     * 将令牌加入黑名单
+     * <p>
+     * 黑名单记录的过期时间与令牌本身的剩余有效期一致（剩余时间不足 1 秒时不写入）， 令牌自然过期后黑名单条目随之清理。
+     *
+     * @param tokenId
+     *            令牌唯一 ID
+     * @param expireTimeMs
+     *            令牌过期时间戳（毫秒）
+     */
+    public void blacklistToken(String tokenId, long expireTimeMs) {
+        try {
+            String key = BLACKLIST_PREFIX + tokenId;
+            long ttlSeconds = Math.max((expireTimeMs - System.currentTimeMillis()) / 1000, 0);
+
+            if (ttlSeconds > 0) {
+                redisTemplate.opsForValue().set(key, System.currentTimeMillis(), ttlSeconds, TimeUnit.SECONDS);
+            }
+        } catch (Exception e) {
+            log.warn("未能将令牌加入黑名单: {}", tokenId, e);
+        }
+    }
+
+    /**
+     * 移除单个令牌
+     * <p>
+     * 从有效令牌缓存中删除该令牌，并（在提供用户 ID 时）将其从用户持有的令牌集合中移除。
+     *
+     * @param tokenId
+     *            令牌唯一 ID
+     * @param userId
+     *            用户 ID，可为 null（为 null 时仅删除令牌缓存，不维护用户集合）
+     */
+    public void removeToken(String tokenId, String userId) {
+        try {
+            // 从有效token缓存中移除
+            redisTemplate.delete(TOKEN_PREFIX + tokenId);
+
+            // 从用户token集合中移除
+            if (StringUtils.isNotBlank(userId)) {
+                removeTokenFromUser(userId, tokenId);
+            }
+        } catch (Exception e) {
+            log.warn("无法移除令牌: {}", tokenId, e);
+        }
+    }
+
+    /**
+     * 将令牌 ID 从用户持有的令牌集合中移除
+     *
+     * @param userId
+     *            用户 ID
+     * @param tokenId
+     *            令牌唯一 ID
+     */
+    private void removeTokenFromUser(String userId, String tokenId) {
+        try {
+            String key = USER_TOKENS_PREFIX + userId + ":tokens";
+            redisTemplate.opsForSet().remove(key, tokenId);
+        } catch (Exception e) {
+            log.warn("无法从用户集合中移除: {} - {}", userId, tokenId, e);
+        }
+    }
+
+    /**
+     * 移除用户持有的所有令牌
+     * <p>
+     * 遍历用户令牌集合逐个删除有效令牌缓存，最后清空集合本身，用于全端登出或强制下线场景。
+     *
+     * @param userId
+     *            用户 ID
+     */
+    public void removeAllUserTokens(String userId) {
+        try {
+            String userTokenKey = USER_TOKENS_PREFIX + userId + ":tokens";
+            Set<Object> tokenIds = redisTemplate.opsForSet().members(userTokenKey);
+
+            if (!CollectionUtils.isEmpty(tokenIds)) {
+                for (Object tokenId : tokenIds) {
+                    removeToken(tokenId.toString(), null);
+                }
+            }
+
+            // 清空用户token集合
+            redisTemplate.delete(userTokenKey);
+        } catch (Exception e) {
+            log.warn("无法删除所有用户令牌: {}", userId, e);
         }
     }
 }

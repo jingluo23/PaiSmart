@@ -98,4 +98,20 @@ public class OrganizationTag {
         this.uploadMaxSizeBytes = uploadMaxSizeBytes;
         this.createdBy = createdBy;
     }
+
+    /**
+     * 简化构造函数，不限制上传文件大小、无父标签（作为顶级标签）
+     *
+     * @param tagId
+     *            标签唯一标识
+     * @param name
+     *            标签名称
+     * @param description
+     *            标签描述
+     * @param createdBy
+     *            创建者
+     */
+    public OrganizationTag(String tagId, String name, String description, User createdBy) {
+        this(tagId, name, description, null, null, createdBy);
+    }
 }

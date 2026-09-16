@@ -124,4 +124,44 @@ public class OrgTagCacheService {
             log.warn("无法为用户缓存主组织: {}", username, e);
         }
     }
+
+    /**
+     * 从缓存读取用户的组织标签列表
+     *
+     * @param username
+     *            用户名
+     * @return 组织标签 ID 列表，缓存未命中或访问异常时返回 null
+     */
+    public List<String> getUserOrgTags(String username) {
+        try {
+            String key = USER_ORG_TAGS_KEY_PREFIX + username;
+            List<Object> result = redisTemplate.opsForList().range(key, 0, -1);
+            if (!CollectionUtils.isEmpty(result)) {
+                return result.stream().map(obj -> (String)obj).toList();
+            }
+        } catch (Exception e) {
+            log.warn("无法获取用户的组织标签: {}", username, e);
+        }
+
+        return null;
+    }
+
+    /**
+     * 从缓存读取用户的主组织
+     *
+     * @param username
+     *            用户名
+     * @return 主组织标签 ID，缓存未命中或访问异常时返回 null
+     */
+    public String getUserPrimaryOrg(String username) {
+        try {
+            String key = USER_PRIMARY_ORG_KEY_PREFIX + username;
+
+            return (String)redisTemplate.opsForValue().get(key);
+        } catch (Exception e) {
+            log.error("无法获取用户的主要组织: {}", username, e);
+
+            return null;
+        }
+    }
 }

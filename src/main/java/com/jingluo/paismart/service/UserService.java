@@ -24,10 +24,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.unit.DataSize;
 
+import com.jingluo.paismart.config.AppAuthProperties;
 import com.jingluo.paismart.domain.response.UserUsageSnapshot;
+import com.jingluo.paismart.enums.RegistrationMode;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.OrganizationTag;
@@ -60,7 +63,15 @@ public class UserService {
     @Autowired
     private UsageQuotaService usageQuotaService;
 
-    /** 系统全局上传文件大小限制，读取自 spring.servlet.multipart.max-file-size 配置 */
+    @Autowired
+    private AppAuthProperties appAuthProperties;
+
+    @Autowired
+    private InviteCodeService inviteCodeService;
+
+    /**
+     * 系统全局上传文件大小限制，读取自 spring.servlet.multipart.max-file-size 配置
+     */
     @Value("${spring.servlet.multipart.max-file-size:50MB}")
     private String globalUploadMaxFileSize;
 
@@ -69,23 +80,55 @@ public class UserService {
      */
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{6,18}$");
 
-    /** 私人标签前缀，以 "PRIVATE_" + 用户名 命名的标签属于用户私人标签，分配标签时不可被移除 */
+    /**
+     * 私人标签前缀，以 "PRIVATE_" + 用户名 命名的标签属于用户私人标签，分配标签时不可被移除
+     */
     private static final String PRIVATE_TAG_PREFIX = "PRIVATE_";
 
-    /** 标签 ID 最大长度 */
+    /**
+     * 标签 ID 最大长度
+     */
     private static final int MAX_TAG_ID_LENGTH = 255;
 
-    /** 生成标签 slug 时匹配非字母数字字符 */
+    /**
+     * 生成标签 slug 时匹配非字母数字字符
+     */
     private static final Pattern NON_ALNUM_PATTERN = Pattern.compile("[^a-z0-9]+");
 
-    /** 生成标签 slug 时去除首尾连字符 */
+    /**
+     * 生成标签 slug 时去除首尾连字符
+     */
     private static final Pattern TRIM_DASH_PATTERN = Pattern.compile("(^-+|-+$)");
 
-    /** 每 MB 对应的字节数 */
+    /**
+     * 每 MB 对应的字节数
+     */
     private static final long BYTES_PER_MB = 1024L * 1024L;
 
-    /** 系统默认组织标签 ID，不允许删除 */
+    /**
+     * 系统默认组织标签 ID，不允许删除
+     */
     private static final String DEFAULT_ORG_TAG = "DEFAULT";
+
+    /**
+     * 默认组织标签的显示名称
+     */
+    private static final String DEFAULT_ORG_NAME = "默认组织";
+
+    /**
+     * 默认组织标签的描述
+     */
+    private static final String DEFAULT_ORG_DESCRIPTION = "系统默认组织标签，自动分配给所有新用户";
+
+    /**
+     * 私人组织标签的名称后缀，标签名 = 用户名 + 后缀
+     */
+    private static final String PRIVATE_ORG_NAME_SUFFIX = "的私人空间";
+
+    /**
+     * 私人组织标签的描述
+     */
+    private static final String PRIVATE_ORG_DESCRIPTION = "用户的私人组织标签，仅用户本人可访问";
 
     /**
      * 创建管理员账号：校验创建者必须为已存在的管理员、用户名不重复、密码符合格式要求， 密码使用 BCrypt 加密后入库
@@ -721,5 +764,308 @@ public class UserService {
         }
 
         return Boolean.TRUE;
+    }
+
+    /**
+     * 注册普通用户
+     * <p>
+     * 事务方法。流程：按注册策略校验（注册模式、邀请码消费）→ 校验密码格式与用户名唯一性 → 确保默认组织存在 → 创建用户 → 创建私人组织标签 → 分配默认组织与私人组织并设置主组织 → 缓存组织标签信息。
+     *
+     * @param username
+     *            用户名
+     * @param password
+     *            密码（明文，将使用 BCrypt 加密入库）
+     * @param inviteCode
+     *            邀请码，注册模式要求时必填
+     * @throws CustomException
+     *             注册关闭、邀请码无效或用户名已存在时抛出
+     */
+    @Transactional
+    public void registerUser(String username, String password, String inviteCode) {
+        validateRegistrationPolicy(username, inviteCode);
+
+        validatePassword(password);
+
+        // 检查数据库中是否已存在该用户名
+        if (userRepository.findByUsername(username).isPresent()) {
+            // 若用户名已存在，抛出自定义异常，状态码为 400 Bad Request
+            throw new CustomException("用户名已存在", HttpStatus.BAD_REQUEST);
+        }
+
+        // 确保默认组织标签存在（系统内部使用）
+        ensureDefaultOrgTagExists();
+
+        User user = new User(username, PasswordUtil.encode(password), Role.USER);
+
+        // 保存用户以生成ID
+        userRepository.save(user);
+
+        // 创建用户的私人组织标签
+        String privateTagId = PRIVATE_TAG_PREFIX + username;
+        createPrivateOrgTag(privateTagId, username, user);
+
+        // 新用户默认拥有系统默认组织和自己的私人组织
+        List<String> assignedOrgTags = List.of(DEFAULT_ORG_TAG, privateTagId);
+        user.setOrgTags(String.join(",", assignedOrgTags));
+
+        // 设置私人组织标签为主组织标签
+        user.setPrimaryOrg(privateTagId);
+
+        userRepository.save(user);
+
+        // 缓存组织标签信息
+        orgTagCacheService.cacheUserOrgTags(username, assignedOrgTags);
+        orgTagCacheService.cacheUserPrimaryOrg(username, privateTagId);
+    }
+
+    /**
+     * 创建用户的私人组织标签，标签已存在时跳过
+     *
+     * @param privateTagId
+     *            私人标签 ID（"PRIVATE_" + 用户名）
+     * @param username
+     *            用户名，用于拼接标签名称
+     * @param owner
+     *            标签所有者
+     */
+    private void createPrivateOrgTag(String privateTagId, String username, User owner) {
+        // 检查私人标签是否已存在
+        if (!organizationTagRepository.existsByTagId(privateTagId)) {
+            // 创建私人组织标签
+            OrganizationTag privateTag =
+                new OrganizationTag(privateTagId, username + PRIVATE_ORG_NAME_SUFFIX, PRIVATE_ORG_DESCRIPTION, owner);
+
+            organizationTagRepository.save(privateTag);
+        }
+    }
+
+    /**
+     * 确保系统默认组织标签存在，不存在时自动以首个管理员作为创建者初始化
+     *
+     * @throws CustomException
+     *             系统中没有任何管理员用户时抛出
+     */
+    private void ensureDefaultOrgTagExists() {
+        if (!organizationTagRepository.existsByTagId(DEFAULT_ORG_TAG)) {
+            // 寻找一个管理员用户作为创建者
+            Optional<User> adminUser =
+                userRepository.findAll().stream().filter(user -> Role.ADMIN.equals(user.getRole())).findFirst();
+
+            User creator =
+                adminUser.orElseThrow(() -> new CustomException("没有管理员用户来初始化默认组织标签", HttpStatus.INTERNAL_SERVER_ERROR));
+
+            // 创建默认组织标签
+            OrganizationTag defaultTag =
+                new OrganizationTag(DEFAULT_ORG_TAG, DEFAULT_ORG_NAME, DEFAULT_ORG_DESCRIPTION, creator);
+
+            organizationTagRepository.save(defaultTag);
+        }
+    }
+
+    /**
+     * 校验注册策略
+     * <p>
+     * 注册模式为 CLOSED 时直接拒绝注册；配置要求邀请码或模式为 INVITE_ONLY 时， 消费一次邀请码（含有效性、有效期与剩余次数校验）。
+     *
+     * @param username
+     *            待注册的用户名，用于日志记录
+     * @param inviteCode
+     *            邀请码
+     * @throws CustomException
+     *             注册关闭或邀请码校验不通过时抛出
+     */
+    private void validateRegistrationPolicy(String username, String inviteCode) {
+        RegistrationMode mode = appAuthProperties.getRegistration().getMode();
+
+        boolean inviteRequired =
+            appAuthProperties.getRegistration().isInviteRequired() || mode == RegistrationMode.INVITE_ONLY;
+
+        if (mode == RegistrationMode.CLOSED) {
+            log.warn("注册被阻止，因为注册模式已关闭，用户名: {}", username);
+
+            throw new CustomException("REGISTRATION_CLOSED", HttpStatus.FORBIDDEN);
+        }
+
+        if (inviteRequired) {
+            inviteCodeService.consume(inviteCode, username);
+        }
+    }
+
+    /**
+     * 用户认证：校验用户名存在且密码匹配
+     *
+     * @param username
+     *            用户名
+     * @param password
+     *            密码（明文）
+     * @return 认证成功时返回用户名
+     * @throws CustomException
+     *             用户不存在或密码不匹配时抛出（401）
+     */
+    public String authenticateUser(String username, String password) {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new CustomException("用户名或密码无效", HttpStatus.UNAUTHORIZED));
+
+        // 比较输入的密码和数据库中存储的加密密码是否匹配
+        if (!PasswordUtil.matches(password, user.getPassword())) {
+            // 若不匹配，抛出自定义异常，状态码为 401 Unauthorized
+            throw new CustomException("用户名或密码无效", HttpStatus.UNAUTHORIZED);
+        }
+
+        // 认证成功，返回用户的用户名
+        return user.getUsername();
+    }
+
+    /**
+     * 获取用户的组织标签信息
+     * <p>
+     * 优先从 Redis 缓存读取组织标签列表与主组织，未命中时回源数据库并回填缓存； 同时返回各标签的详细信息（名称、描述、上传大小限制）。
+     *
+     * @param username
+     *            用户名
+     * @return 包含 orgTags（标签 ID 列表）、primaryOrg（主组织）及 orgTagDetails（标签详情）的 map
+     * @throws CustomException
+     *             用户不存在时抛出
+     */
+    public Map<String, Object> getUserOrgTags(String username) {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new CustomException("未找到用户", HttpStatus.NOT_FOUND));
+
+        // 尝试从缓存获取
+        List<String> orgTags = orgTagCacheService.getUserOrgTags(username);
+
+        String primaryOrg = orgTagCacheService.getUserPrimaryOrg(username);
+
+        // 如果缓存中没有，则从数据库获取
+        if (CollectionUtils.isEmpty(orgTags)) {
+            orgTags = Arrays.asList(user.getOrgTags().split(","));
+            // 更新缓存
+            orgTagCacheService.cacheUserOrgTags(username, orgTags);
+        }
+
+        if (StringUtils.isBlank(primaryOrg)) {
+            primaryOrg = user.getPrimaryOrg();
+            // 更新缓存
+            orgTagCacheService.cacheUserPrimaryOrg(username, primaryOrg);
+        }
+
+        // 获取组织标签的详细信息
+        List<Map<String, Object>> orgTagDetails = new ArrayList<>();
+        for (String tagId : orgTags) {
+            OrganizationTag tag = organizationTagRepository.findByTagId(tagId).orElse(null);
+            if (Objects.nonNull(tag)) {
+                Map<String, Object> tagInfo = new HashMap<>();
+                tagInfo.put("tagId", tag.getTagId());
+                tagInfo.put("name", tag.getName());
+                tagInfo.put("description", tag.getDescription());
+                tagInfo.put("uploadMaxSizeBytes", tag.getUploadMaxSizeBytes());
+                tagInfo.put("uploadMaxSizeMb", toUploadMaxSizeMb(tag.getUploadMaxSizeBytes()));
+                orgTagDetails.add(tagInfo);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("orgTags", orgTags);
+        result.put("primaryOrg", primaryOrg);
+        result.put("orgTagDetails", orgTagDetails);
+
+        return result;
+    }
+
+    /**
+     * 设置用户的主组织标签
+     * <p>
+     * 仅允许设置为已分配给该用户的组织标签，设置成功后同步更新 Redis 缓存。
+     *
+     * @param username
+     *            用户名
+     * @param primaryOrg
+     *            主组织标签 ID
+     * @throws CustomException
+     *             用户不存在或该标签未分配给用户时抛出
+     */
+    public void setUserPrimaryOrg(String username, String primaryOrg) {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new CustomException("未找到用户", HttpStatus.NOT_FOUND));
+
+        // 检查该组织标签是否已分配给用户
+        Set<String> userTags = Arrays.stream(user.getOrgTags().split(",")).collect(Collectors.toSet());
+        if (!userTags.contains(primaryOrg)) {
+            throw new CustomException("未向用户分配组织标签", HttpStatus.BAD_REQUEST);
+        }
+
+        user.setPrimaryOrg(primaryOrg);
+
+        userRepository.save(user);
+
+        // 更新缓存
+        orgTagCacheService.cacheUserPrimaryOrg(username, primaryOrg);
+    }
+
+    /**
+     * 获取用户的主组织标签
+     * <p>
+     * 优先从 Redis 缓存读取；未命中时回源数据库，用户未设置主组织时回退为首个组织标签（并持久化）， 无任何标签时回退为系统默认组织，最后回填缓存。
+     *
+     * @param userId
+     *            用户 ID 或用户名（自动识别）
+     * @return 主组织标签 ID
+     * @throws CustomException
+     *             用户不存在时抛出
+     */
+    public String getUserPrimaryOrg(String userId) {
+        // 先通过userId查找用户，然后获取username
+        User user = resolveUser(userId);
+
+        String username = user.getUsername();
+
+        // 尝试从缓存获取
+        String primaryOrg = orgTagCacheService.getUserPrimaryOrg(username);
+
+        // 如果缓存中没有，则从数据库获取
+        if (StringUtils.isBlank(primaryOrg)) {
+            primaryOrg = user.getPrimaryOrg();
+
+            // 如果用户没有设置主组织标签，则尝试使用第一个分配的组织标签
+            if (StringUtils.isBlank(primaryOrg)) {
+                String[] tags = user.getOrgTags().split(",");
+                if (tags.length > 0) {
+                    primaryOrg = tags[0];
+                    // 更新用户的主组织标签
+                    user.setPrimaryOrg(primaryOrg);
+
+                    userRepository.save(user);
+                } else {
+                    // 如果用户没有任何组织标签，则使用默认标签
+                    primaryOrg = DEFAULT_ORG_TAG;
+                }
+            }
+
+            // 更新缓存
+            orgTagCacheService.cacheUserPrimaryOrg(username, primaryOrg);
+        }
+
+        return primaryOrg;
+    }
+
+    /**
+     * 解析用户：入参可解析为数字时按用户 ID 查询，否则按用户名查询
+     *
+     * @param userId
+     *            用户 ID 或用户名
+     * @return 对应的用户实体
+     * @throws CustomException
+     *             未找到对应用户时抛出
+     */
+    private User resolveUser(String userId) {
+        try {
+            Long userIdLong = Long.parseLong(userId);
+
+            return userRepository.findById(userIdLong)
+                .orElseThrow(() -> new CustomException("未找到ID对应的用户: " + userId, HttpStatus.NOT_FOUND));
+        } catch (NumberFormatException e) {
+            return userRepository.findByUsername(userId)
+                .orElseThrow(() -> new CustomException("未找到用户: " + userId, HttpStatus.NOT_FOUND));
+        }
     }
 }

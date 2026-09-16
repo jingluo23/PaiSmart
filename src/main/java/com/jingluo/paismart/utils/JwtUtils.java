@@ -277,4 +277,90 @@ public class JwtUtils {
 
         return refreshToken;
     }
+
+    /**
+     * 使单个令牌失效
+     * <p>
+     * 从令牌中提取 tokenId 与用户信息，先将令牌加入黑名单，再从有效令牌缓存及用户令牌集合中移除。 解析或吊销过程中的异常仅记录日志，不向外抛出。
+     *
+     * @param token
+     *            待失效的 JWT 令牌
+     */
+    public void invalidateToken(String token) {
+        try {
+            String tokenId = extractTokenIdFromToken(token);
+            if (StringUtils.isNotBlank(tokenId)) {
+                Claims claims = extractClaimsIgnoreExpiration(token);
+                if (Objects.nonNull(claims)) {
+                    long expireTime = claims.getExpiration().getTime();
+                    String userId = claims.get("userId", String.class);
+
+                    // 加入黑名单
+                    tokenCacheService.blacklistToken(tokenId, expireTime);
+
+                    // 从缓存中移除
+                    tokenCacheService.removeToken(tokenId, userId);
+                }
+            }
+        } catch (Exception e) {
+            log.error("令牌失效错误", e);
+        }
+    }
+
+    /**
+     * 从 JWT 令牌中提取 tokenId
+     * <p>
+     * 使用忽略过期异常的方式解析，即使令牌已过期也能提取出 ID。
+     *
+     * @param token
+     *            JWT 令牌
+     * @return 令牌 ID，解析失败时返回 null
+     */
+    public String extractTokenIdFromToken(String token) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(token);
+            return Objects.nonNull(claims) ? claims.get("tokenId", String.class) : null;
+        } catch (Exception e) {
+            log.debug("从令牌中提取令牌ID时出错", e);
+
+            return null;
+        }
+    }
+
+    /**
+     * 从 JWT 令牌中提取用户 ID
+     * <p>
+     * 使用忽略过期异常的方式解析，即使令牌已过期也能提取出用户 ID。
+     *
+     * @param token
+     *            JWT 令牌
+     * @return 用户 ID，解析失败时返回 null
+     */
+    public String extractUserIdFromToken(String token) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(token);
+
+            return Objects.nonNull(claims) ? claims.get("userId", String.class) : null;
+        } catch (Exception e) {
+            log.error("从令牌中提取用户ID时出错: {}", token, e);
+
+            return null;
+        }
+    }
+
+    /**
+     * 使用户的所有令牌失效
+     * <p>
+     * 委托缓存服务清空该用户持有的全部令牌记录，用于全端登出场景。
+     *
+     * @param userId
+     *            用户 ID
+     */
+    public void invalidateAllUserTokens(String userId) {
+        try {
+            tokenCacheService.removeAllUserTokens(userId);
+        } catch (Exception e) {
+            log.warn("用户令牌全部失效错误: {}", userId, e);
+        }
+    }
 }

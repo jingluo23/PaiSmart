@@ -290,4 +290,41 @@ public class InviteCodeService {
 
         return inviteCodeRepository.save(inviteCode);
     }
+
+    /**
+     * 消费一次邀请码
+     * <p>
+     * 校验邀请码非空、存在、启用、未过期且未用尽后，将已使用次数加 1 并落库。 使用悲观写锁查询记录，防止并发注册导致同一邀请码被超量消费。
+     *
+     * @param code
+     *            邀请码字符串
+     * @param username
+     *            发起注册的用户名（当前未参与校验，预留扩展）
+     * @throws CustomException
+     *             邀请码为空、无效、已过期或次数用尽时抛出
+     */
+    public void consume(String code, String username) {
+        if (StringUtils.isBlank(code)) {
+            throw new CustomException("INVITE_CODE_REQUIRED", HttpStatus.FORBIDDEN);
+        }
+
+        InviteCode inviteCode = inviteCodeRepository.findByCodeForUpdate(normalizeCode(code))
+            .orElseThrow(() -> new CustomException("INVITE_CODE_INVALID", HttpStatus.FORBIDDEN));
+
+        if (!Boolean.TRUE.equals(inviteCode.getEnabled())) {
+            throw new CustomException("INVITE_CODE_INVALID", HttpStatus.FORBIDDEN);
+        }
+
+        if (Objects.nonNull(inviteCode.getExpiresAt()) && inviteCode.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new CustomException("INVITE_CODE_EXPIRED", HttpStatus.FORBIDDEN);
+        }
+
+        if (inviteCode.getUsedCount() >= inviteCode.getMaxUses()) {
+            throw new CustomException("INVITE_CODE_EXHAUSTED", HttpStatus.FORBIDDEN);
+        }
+
+        inviteCode.setUsedCount(inviteCode.getUsedCount() + 1);
+
+        inviteCodeRepository.save(inviteCode);
+    }
 }

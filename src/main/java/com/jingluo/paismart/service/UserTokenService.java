@@ -3,6 +3,10 @@ package com.jingluo.paismart.service;
 import java.time.LocalDate;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -42,8 +46,14 @@ public class UserTokenService {
     @Autowired
     private UserTokenRecordRepository userTokenRecordRepository;
 
+    /**
+     * LLM Token 余额在 Redis 中的 key 前缀
+     */
     private static final String LLM_TOKEN_KEY_PREFIX = "user:token:llm:";
 
+    /**
+     * Embedding Token 余额在 Redis 中的 key 前缀
+     */
     private static final String EMBEDDING_TOKEN_KEY_PREFIX = "user:token:embedding:";
 
     /**
@@ -264,5 +274,24 @@ public class UserTokenService {
      */
     private String buildEmbeddingTokenKey(String userId) {
         return EMBEDDING_TOKEN_KEY_PREFIX + userId;
+    }
+
+    /**
+     * 分页查询用户 Token 变动流水
+     *
+     * @param userId
+     *            用户 ID
+     * @param page
+     *            页码，从 0 开始
+     * @param size
+     *            每页数量
+     * @return 按创建时间、记录日期倒序排列的变动记录分页结果
+     */
+    public Page<UserTokenRecord> getUserTokenRecords(String userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "recordDate"));
+        Page<UserTokenRecord> recordPage =
+            userTokenRecordRepository.findByUserIdOrderByRecordDateDesc(userId, pageable);
+
+        return recordPage;
     }
 }
