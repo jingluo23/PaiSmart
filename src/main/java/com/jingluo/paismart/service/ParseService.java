@@ -30,7 +30,10 @@ import com.hankcs.hanlp.seg.common.Term;
 import com.hankcs.hanlp.tokenizer.StandardTokenizer;
 import com.jingluo.paismart.domain.response.EmbeddingEstimate;
 import com.jingluo.paismart.domain.response.LiteParsePage;
+import com.jingluo.paismart.handler.StreamingContentHandler;
 import com.jingluo.paismart.handler.StreamingEstimateHandler;
+import com.jingluo.paismart.model.DocumentVector;
+import com.jingluo.paismart.repository.DocumentVectorRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -47,7 +50,7 @@ public class ParseService {
     private UsageQuotaService usageQuotaService;
 
     @Autowired
-    private StreamingEstimateHandler streamingEstimateHandler;
+    private DocumentVectorRepository documentVectorRepository;
 
     /**
      * 解析前内存保护的堆使用率阈值，超过则触发 GC 复查并可能拒绝处理，默认 0.8
@@ -60,6 +63,12 @@ public class ParseService {
      */
     @Value("${file.parsing.chunk-size}")
     private int chunkSize;
+
+    /**
+     * 流式处理父块阈值：缓冲内容达到该大小即触发一次切分/估算（字符数）
+     */
+    @Value("${file.parsing.parent-chunk-size:1048576}")
+    private int parentChunkSize;
 
     /**
      * 相邻分块间语义重叠的大小（字符数）
@@ -181,9 +190,9 @@ public class ParseService {
      *             文档解析失败
      */
     public EmbeddingEstimate estimateEmbeddingUsage(InputStream fileStream) throws IOException, TikaException {
-        checkMemoryThreshold();
-
         try (BufferedInputStream bufferedStream = new BufferedInputStream(fileStream, bufferSize)) {
+            checkMemoryThreshold();
+
             if (isPdfDocument(bufferedStream)) {
                 return estimatePdfEmbeddingUsage(bufferedStream);
             }
@@ -192,9 +201,12 @@ public class ParseService {
             ParseContext context = new ParseContext();
             AutoDetectParser parser = new AutoDetectParser();
 
-            parser.parse(bufferedStream, streamingEstimateHandler, metadata, context);
+            StreamingEstimateHandler handler =
+                new StreamingEstimateHandler(this, usageQuotaService, chunkSize, parentChunkSize);
 
-            return streamingEstimateHandler.snapshot();
+            parser.parse(bufferedStream, handler, metadata, context);
+
+            return handler.snapshot();
         } catch (SAXException e) {
             throw new RuntimeException("文档 Embedding Token 估算失败", e);
         }
@@ -902,5 +914,88 @@ public class ParseService {
                 throw new RuntimeException("内存不足，无法处理大文件。当前使用率: " + String.format("%.2f%%", memoryUsage * 100));
             }
         }
+    }
+
+    public void parseAndSave(String fileMd5, InputStream fileStream) throws IOException, TikaException {
+        // 使用默认值调用新方法
+        parseAndSave(fileMd5, fileStream, "unknown", "DEFAULT", false);
+    }
+
+    public void parseAndSave(String fileMd5, InputStream fileStream, String userId, String orgTag, boolean isPublic)
+        throws IOException, TikaException {
+        try (BufferedInputStream bufferedStream = new BufferedInputStream(fileStream, bufferSize)) {
+            checkMemoryThreshold();
+
+            if (isPdfDocument(bufferedStream)) {
+                parsePdfAndSave(fileMd5, bufferedStream, userId, orgTag, isPublic);
+                return;
+            }
+
+            // 创建一个流式处理器，它会在内部处理父块的切分和子块的保存
+            StreamingContentHandler handler =
+                new StreamingContentHandler(this, chunkSize, parentChunkSize, fileMd5, userId, orgTag, isPublic);
+
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+            AutoDetectParser parser = new AutoDetectParser();
+
+            // Tika的parse方法会驱动整个流式处理过程
+            // 当handler的characters方法接收到足够数据时，会触发分块、切片和保存
+            parser.parse(bufferedStream, handler, metadata, context);
+        } catch (SAXException e) {
+            throw new RuntimeException("文档解析失败", e);
+        }
+    }
+
+    private void parsePdfAndSave(String fileMd5, InputStream fileStream, String userId, String orgTag, boolean isPublic)
+        throws IOException {
+        List<LiteParsePage> pages = parsePdfWithLiteParse(fileStream);
+        int savedChunkCount = 0;
+
+        for (LiteParsePage page : pages) {
+            String pageText = page.getText();
+            if (StringUtils.isBlank(pageText)) {
+                continue;
+            }
+
+            List<String> childChunks = splitTextIntoChunksWithSemantics(pageText, chunkSize);
+            savedChunkCount =
+                saveChildChunks(fileMd5, childChunks, userId, orgTag, isPublic, savedChunkCount, page.getPageNumber());
+        }
+    }
+
+    public int saveChildChunks(String fileMd5, List<String> chunks, String userId, String orgTag, boolean isPublic,
+        int startingChunkId, Integer pageNumber) {
+        int currentChunkId = startingChunkId;
+        for (String chunk : chunks) {
+            currentChunkId++;
+            var vector = new DocumentVector();
+            vector.setFileMd5(fileMd5);
+            vector.setChunkId(currentChunkId);
+            vector.setTextContent(chunk);
+            vector.setPageNumber(pageNumber);
+            vector.setAnchorText(buildAnchorText(chunk));
+            vector.setUserId(userId);
+            vector.setOrgTag(orgTag);
+            vector.setPublic(isPublic);
+
+            documentVectorRepository.save(vector);
+        }
+
+        return currentChunkId;
+    }
+
+    private String buildAnchorText(String chunk) {
+        if (StringUtils.isBlank(chunk)) {
+            return null;
+        }
+
+        String normalized = chunk.replaceAll("\\s+", " ").trim();
+        int maxLength = 120;
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+
+        return normalized.substring(0, maxLength) + "…";
     }
 }

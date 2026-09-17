@@ -3,9 +3,6 @@ package com.jingluo.paismart.handler;
 import java.util.List;
 
 import org.apache.tika.sax.BodyContentHandler;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import com.jingluo.paismart.domain.response.EmbeddingEstimate;
 import com.jingluo.paismart.service.ParseService;
@@ -14,28 +11,23 @@ import com.jingluo.paismart.service.UsageQuotaService;
 /**
  * @Author: 鲸落
  * @Date: 2026/9/17 16:30
- * @Desc: Tika 流式解析内容处理器：边解析边按父块粒度估算 Embedding Token 数与分块数，避免大文件全量驻留内存
+ * @Desc: Tika 流式解析内容处理器：边解析边按父块粒度估算 Embedding Token 数与分块数，避免大文件全量驻留内存。 非 Spring Bean，每次估算调用按次创建，依赖由 ParseService 通过构造器传入
  */
-@Component
 public class StreamingEstimateHandler extends BodyContentHandler {
 
-    @Autowired
-    private ParseService parseService;
+    private final ParseService parseService;
 
-    @Autowired
-    private UsageQuotaService usageQuotaService;
+    private final UsageQuotaService usageQuotaService;
 
     /**
      * 父块阈值：缓冲内容达到该大小即触发一次估算，默认 1MB
      */
-    @Value("${file.parsing.parent-chunk-size:1048576}")
-    private int parentChunkSize;
+    private final int parentChunkSize;
 
     /**
      * 向量化子分块大小（字符数），与解析服务保持一致
      */
-    @Value("${file.parsing.chunk-size}")
-    private int chunkSize;
+    private final int chunkSize;
 
     /**
      * 累积待估算的文本缓冲区
@@ -53,10 +45,15 @@ public class StreamingEstimateHandler extends BodyContentHandler {
     private int estimatedChunkCount = 0;
 
     /**
-     * 私有构造：传入 -1 取消 BodyContentHandler 默认的写入字符上限， 保证大文档内容不会因超出截断阈值而丢失
+     * 传入 -1 取消 BodyContentHandler 默认的写入字符上限， 保证大文档内容不会因超出截断阈值而丢失
      */
-    private StreamingEstimateHandler() {
+    public StreamingEstimateHandler(ParseService parseService, UsageQuotaService usageQuotaService, int chunkSize,
+        int parentChunkSize) {
         super(-1);
+        this.parseService = parseService;
+        this.usageQuotaService = usageQuotaService;
+        this.chunkSize = chunkSize;
+        this.parentChunkSize = parentChunkSize;
     }
 
     /**
