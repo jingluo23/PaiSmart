@@ -42,6 +42,21 @@ public class UsageQuotaService {
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
 
     /**
+     * ASCII 字符（英文、数字、半角符号）的 Token 折算比例
+     */
+    private static final double ASCII_TOKEN_RATIO = 0.30d;
+
+    /**
+     * CJK 字符（中文、日文假名、韩文）的 Token 折算比例
+     */
+    private static final double CJK_TOKEN_RATIO = 0.95d;
+
+    /**
+     * 其他 Unicode 字符的 Token 折算比例
+     */
+    private static final double OTHER_TOKEN_RATIO = 0.55d;
+
+    /**
      * 获取用户使用快照
      *
      * @param userIds
@@ -244,5 +259,62 @@ public class UsageQuotaService {
     private UserUsageSnapshot emptySnapshot() {
         return new UserUsageSnapshot(currentDay(), 0, new QuotaView(false, 0, 0, 0, 0),
             new QuotaView(false, 0, 0, 0, 0));
+    }
+
+    /**
+     * 估算一批文本的 Embedding Token 总数：单条文本按字符类别折算并附加每条固定开销， 总和再上浮 15% 作为安全余量
+     *
+     * @param texts
+     *            待估算的文本列表
+     * @return 估算的 Token 总数
+     */
+    public int estimateEmbeddingTokens(List<String> texts) {
+        if (CollectionUtils.isEmpty(texts)) {
+            return 0;
+        }
+
+        int total = 0;
+        for (String text : texts) {
+            total += estimateTextTokens(text) + 4;
+        }
+
+        return (int)Math.ceil(total * 1.15d);
+    }
+
+    /**
+     * 估算单条文本的 Token 数：按字符类别（CJK/ASCII/其他）分别计数并乘以折算比例， 忽略空白字符，附加常数开销后向上取整
+     *
+     * @param text
+     *            待估算文本
+     * @return 估算的 Token 数，非空文本至少为 1
+     */
+    public int estimateTextTokens(String text) {
+        if (StringUtils.isBlank(text)) {
+            return 0;
+        }
+
+        int ascii = 0;
+        int cjk = 0;
+        int other = 0;
+
+        for (int i = 0; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (Character.isWhitespace(current)) {
+                continue;
+            }
+
+            Character.UnicodeScript script = Character.UnicodeScript.of(current);
+            if (script == Character.UnicodeScript.HAN || script == Character.UnicodeScript.HIRAGANA
+                || script == Character.UnicodeScript.KATAKANA || script == Character.UnicodeScript.HANGUL) {
+                cjk++;
+            } else if (current <= 0x7F) {
+                ascii++;
+            } else {
+                other++;
+            }
+        }
+
+        double estimated = ascii * ASCII_TOKEN_RATIO + cjk * CJK_TOKEN_RATIO + other * OTHER_TOKEN_RATIO + 12;
+        return Math.max(1, (int)Math.ceil(estimated));
     }
 }

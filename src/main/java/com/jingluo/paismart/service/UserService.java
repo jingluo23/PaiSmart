@@ -1068,4 +1068,29 @@ public class UserService {
                 .orElseThrow(() -> new CustomException("未找到用户: " + userId, HttpStatus.NOT_FOUND));
         }
     }
+
+    /**
+     * 判断用户是否为管理员
+     *
+     * @param userId
+     *            用户 ID 或用户名
+     * @return 是否管理员
+     */
+    public boolean isAdminUser(String userId) {
+        return resolveUser(userId).getRole() == Role.ADMIN;
+    }
+
+    /**
+     * 按标签 ID 查询组织标签
+     *
+     * @param tagId
+     *            组织标签 ID
+     * @return 组织标签实体
+     * @throws CustomException
+     *             组织标签不存在时抛出
+     */
+    public OrganizationTag getOrganizationTag(String tagId) {
+        return organizationTagRepository.findByTagId(tagId)
+            .orElseThrow(() -> new CustomException("未找到组织标签", HttpStatus.NOT_FOUND));
+    }
 }

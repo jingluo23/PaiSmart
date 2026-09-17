@@ -29,7 +29,7 @@ public class ResponseResult<T> implements Serializable {
     /**
      * 提示信息
      */
-    private String msg;
+    private String message;
 
     /**
      * 数据
@@ -39,12 +39,14 @@ public class ResponseResult<T> implements Serializable {
     /**
      * 失败
      *
-     * @param value 状态码
-     * @param s     提示信息
+     * @param value
+     *            状态码
+     * @param message
+     *            提示信息
      * @return 响应结果
      */
-    public static <T> ResponseResult<T> fail(int value, String s) {
-        return new ResponseResult<>(value, s, null);
+    public static <T> ResponseResult<T> fail(int value, String message) {
+        return new ResponseResult<>(value, message, null);
     }
 
     /**
@@ -60,11 +62,39 @@ public class ResponseResult<T> implements Serializable {
     /**
      * 成功
      *
-     * @param msg
+     * @param message
      * @return
      * @param <T>
      */
-    public static <T> ResponseResult<T> success(String msg) {
-        return new ResponseResult<>(HttpStatus.OK.value(), msg, null);
+    public static <T> ResponseResult<T> success(String message) {
+        return new ResponseResult<>(HttpStatus.OK.value(), message, null);
+    }
+
+    /**
+     * 失败（仅携带附加数据，无提示信息）
+     *
+     * @param value
+     *            状态码
+     * @param data
+     *            附加数据
+     * @return 响应结果
+     */
+    public static <T> ResponseResult<T> fail(int value, T data) {
+        return new ResponseResult<>(value, null, data);
+    }
+
+    /**
+     * 失败（携带提示信息与附加数据）
+     *
+     * @param value
+     *            状态码
+     * @param message
+     *            提示信息
+     * @param data
+     *            附加数据
+     * @return 响应结果
+     */
+    public static <T> ResponseResult<T> fail(int value, String message, T data) {
+        return new ResponseResult<>(value, message, data);
     }
 }
