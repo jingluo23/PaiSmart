@@ -294,4 +294,28 @@ public class UserTokenService {
 
         return recordPage;
     }
+
+    /**
+     * 为用户增加 LLM Token 额度的简化重载，变动原因默认为"购买套餐充值"
+     *
+     * @param userId
+     *            用户 ID
+     * @param tokens
+     *            增加的 Token 数量（必须大于 0）
+     */
+    public void addLlmTokens(String userId, long tokens) {
+        addLlmTokens(userId, tokens, "购买套餐充值", null);
+    }
+
+    /**
+     * 为用户增加 Embedding Token 额度的简化重载，变动原因默认为"购买套餐充值"
+     *
+     * @param userId
+     *            用户 ID
+     * @param tokens
+     *            增加的 Token 数量（必须大于 0）
+     */
+    public void addEmbeddingTokens(String userId, long tokens) {
+        addEmbeddingTokens(userId, tokens, "购买套餐充值", null);
+    }
 }
