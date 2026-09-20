@@ -1,13 +1,22 @@
 package com.jingluo.paismart.service;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+
+import com.jingluo.paismart.model.OrganizationTag;
+import com.jingluo.paismart.repository.OrganizationTagRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,6 +31,9 @@ public class OrgTagCacheService {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private OrganizationTagRepository organizationTagRepository;
 
     /**
      * 用户有效标签缓存 key 前缀
@@ -42,6 +54,11 @@ public class OrgTagCacheService {
      * 缓存过期时间（小时）
      */
     private static final long CACHE_TTL_HOURS = 24;
+
+    /**
+     * 默认组织标签，保证所有用户在无任何组织归属时仍有兜底可见范围
+     */
+    private static final String DEFAULT_ORG_TAG = "DEFAULT";
 
     /**
      * 使所有用户的有效标签缓存失效，在标签层级或内容发生变更时调用，避免缓存与数据库不一致
@@ -162,6 +179,84 @@ public class OrgTagCacheService {
             log.error("无法获取用户的主要组织: {}", username, e);
 
             return null;
+        }
+    }
+
+    /**
+     * 获取用户的有效组织标签集合：缓存未命中时以用户标签为起点逐级上溯父标签， 并保证默认标签始终包含，结果回写缓存；异常时仅返回默认标签
+     *
+     * @param username
+     *            用户名
+     * @return 有效组织标签集合（含全部层级父标签与默认标签）
+     */
+    public List<String> getUserEffectiveOrgTags(String username) {
+        try {
+            // 从缓存获取
+            String cacheKey = USER_EFFECTIVE_TAGS_KEY_PREFIX + username;
+            List<Object> cachedTags = redisTemplate.opsForList().range(cacheKey, 0, -1);
+
+            if (!CollectionUtils.isEmpty(cachedTags)) {
+                List<String> effectiveTags = cachedTags.stream().map(Object::toString).collect(Collectors.toList());
+
+                // 确保默认标签在结果中（从缓存读取的情况）
+                if (!effectiveTags.contains(DEFAULT_ORG_TAG)) {
+                    effectiveTags.add(DEFAULT_ORG_TAG);
+                }
+
+                return effectiveTags;
+            }
+
+            // 缓存未命中，计算有效标签集合
+            List<String> userTags = getUserOrgTags(username);
+            Set<String> allEffectiveTags = new HashSet<>();
+
+            // 如果用户有标签，添加到集合中并查找父标签
+            if (!CollectionUtils.isEmpty(userTags)) {
+                allEffectiveTags.addAll(userTags);
+
+                // 查找所有父标签
+                for (String tagId : userTags) {
+                    collectParentTags(tagId, allEffectiveTags);
+                }
+            }
+
+            // 确保默认标签在结果中
+            allEffectiveTags.add(DEFAULT_ORG_TAG);
+
+            List<String> result = new ArrayList<>(allEffectiveTags);
+
+            // 缓存结果
+            if (!result.isEmpty()) {
+                redisTemplate.opsForList().rightPushAll(cacheKey, result.toArray());
+                redisTemplate.expire(cacheKey, CACHE_TTL_HOURS, TimeUnit.HOURS);
+            }
+
+            return result;
+        } catch (Exception e) {
+            // 错误情况下至少返回默认标签
+            return Collections.singletonList(DEFAULT_ORG_TAG);
+        }
+    }
+
+    /**
+     * 递归收集指定标签的全部父级标签：父标签缺失或查询异常时静默终止， 不阻断其余标签的处理
+     *
+     * @param tagId
+     *            起始标签 ID
+     * @param result
+     *            父级标签收集结果
+     */
+    private void collectParentTags(String tagId, Set<String> result) {
+        try {
+            OrganizationTag tag = organizationTagRepository.findByTagId(tagId).orElse(null);
+            if (Objects.nonNull(tag) && StringUtils.isNotBlank(tag.getParentTag())) {
+                String parentTagId = tag.getParentTag();
+                result.add(parentTagId);
+
+                collectParentTags(parentTagId, result);
+            }
+        } catch (Exception e) {
+            log.warn("收集标签的父级标签时出错: {}", tagId, e);
         }
     }
 }

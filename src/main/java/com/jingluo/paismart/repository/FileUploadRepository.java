@@ -1,5 +1,6 @@
 package com.jingluo.paismart.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -55,4 +56,13 @@ public interface FileUploadRepository extends JpaRepository<FileUpload, Long> {
     @Query("UPDATE FileUpload f SET f.status = :newStatus WHERE f.id = :id AND f.status = :currentStatus")
     int updateStatusIfCurrent(@Param("id") Long id, @Param("currentStatus") int currentStatus,
         @Param("newStatus") int newStatus);
+
+    /**
+     * 按文件指纹集合批量查询上传记录，用于检索结果补齐原始文件名
+     *
+     * @param md5List
+     *            文件 MD5 集合
+     * @return 命中的上传记录列表
+     */
+    List<FileUpload> findByFileMd5In(List<String> md5List);
 }

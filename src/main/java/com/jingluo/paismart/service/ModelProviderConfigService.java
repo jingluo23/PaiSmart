@@ -22,6 +22,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import com.jingluo.paismart.domain.request.ProviderConnectionTestRequest;
 import com.jingluo.paismart.domain.request.ProviderUpsertRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
+import com.jingluo.paismart.domain.response.ActiveProviderView;
 import com.jingluo.paismart.domain.response.ConnectivityTestView;
 import com.jingluo.paismart.domain.response.ModelProviderSettingsView;
 import com.jingluo.paismart.domain.response.ProviderConfigView;
@@ -39,6 +40,12 @@ import io.micrometer.common.util.StringUtils;
  */
 @Service
 public class ModelProviderConfigService {
+
+    @Autowired
+    private SecretCryptoService secretCryptoService;
+
+    @Autowired
+    private ModelProviderConfigRepository modelProviderConfigRepository;
 
     @Value("${deepseek.api.url:https://api.deepseek.com/v1}")
     private String deepSeekApiUrl;
@@ -60,12 +67,6 @@ public class ModelProviderConfigService {
 
     @Value("${embedding.api.dimension:2048}")
     private Integer embeddingDimension;
-
-    @Autowired
-    private SecretCryptoService secretCryptoService;
-
-    @Autowired
-    private ModelProviderConfigRepository modelProviderConfigRepository;
 
     public static final String SCOPE_LLM = "llm";
 
@@ -159,7 +160,7 @@ public class ModelProviderConfigService {
      * @param rawBaseUrl
      * @return
      */
-    public static String normalizeOpenAiCompatibleBaseUrl(String rawBaseUrl) {
+    public String normalizeOpenAiCompatibleBaseUrl(String rawBaseUrl) {
         if (StringUtils.isBlank(rawBaseUrl)) {
             return null;
         }
@@ -711,5 +712,44 @@ public class ModelProviderConfigService {
     private ProviderConfigView resolveProvider(String scope, String provider, ModelProviderSettingsView settings) {
         return resolveScope(scope, settings).getProviders().stream().filter(item -> item.getProvider().equals(provider))
             .findFirst().orElseThrow(() -> new CustomException("不支持的 provider: " + provider, HttpStatus.BAD_REQUEST));
+    }
+
+    /**
+     * 获取指定作用域当前激活的模型提供者：取第一个标记激活的配置并解出可用密钥， 未配置时抛出服务端异常以提示管理员补全配置
+     *
+     * @param scope
+     *            模型作用域（llm / embedding）
+     * @return 可直接用于调用的激活提供者视图
+     */
+    public ActiveProviderView getActiveProvider(String scope) {
+        ScopeSettingsView settings = resolveScope(scope, currentSettings);
+
+        return settings.getProviders().stream().filter(ProviderConfigView::isActive).findFirst()
+            .map(this::toActiveProvider)
+            .orElseThrow(() -> new CustomException("未找到激活的模型配置: " + scope, HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    /**
+     * 将提供者配置视图转换为激活视图：密钥优先解密数据库持久化密文， 未持久化时回退到内置环境变量密钥，保证旧配置平滑过渡
+     *
+     * @param provider
+     *            提供者配置视图
+     * @return 携带可用密钥的激活提供者视图
+     */
+    private ActiveProviderView toActiveProvider(ProviderConfigView provider) {
+        String apiKey = null;
+        Optional<ModelProviderConfig> persisted = modelProviderConfigRepository
+            .findByConfigScopeAndProviderCode(resolveScopeByProvider(provider.getProvider()), provider.getProvider());
+        if (persisted.isPresent()) {
+            apiKey = secretCryptoService.decrypt(persisted.get().getApiKeyCiphertext());
+        } else if ("deepseek".equals(provider.getProvider())) {
+            apiKey = deepSeekApiKey;
+        } else if ("aliyun".equals(provider.getProvider())) {
+            apiKey = embeddingApiKey;
+        }
+
+        return new ActiveProviderView(provider.getProvider(), provider.getDisplayName(), provider.getApiStyle(),
+            normalizeOpenAiCompatibleBaseUrl(provider.getApiBaseUrl()), provider.getModel(), apiKey,
+            provider.getDimension());
     }
 }
