@@ -1,15 +1,19 @@
 package com.jingluo.paismart.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -17,10 +21,13 @@ import org.springframework.util.CollectionUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jingluo.paismart.enums.Role;
+import com.jingluo.paismart.enums.SessionStatusEnum;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.Conversation;
+import com.jingluo.paismart.model.ConversationSession;
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.ConversationRepository;
+import com.jingluo.paismart.repository.ConversationSessionRepository;
 import com.jingluo.paismart.repository.UserRepository;
 
 import io.micrometer.common.util.StringUtils;
@@ -43,6 +50,12 @@ public class ConversationService {
 
     @Autowired
     private ConversationRepository conversationRepository;
+
+    @Autowired
+    private ConversationSessionRepository conversationSessionRepository;
+
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
 
     /**
      * 对话时间戳的输出格式，精确到秒
@@ -230,5 +243,112 @@ public class ConversationService {
                 return conversationRepository.findByUserIdOrderByTimestampAsc(user.getId());
             }
         }
+    }
+
+    /**
+     * 查询用户的会话列表，按最后更新时间倒序排列，标题为空的会话返回默认标题“新对话”
+     *
+     * @param userId
+     *            用户ID
+     * @return 会话列表，每项包含会话ID、逻辑会话ID、标题、状态及创建/更新时间
+     */
+    public List<Map<String, Object>> getConversationSessions(Long userId) {
+        List<ConversationSession> sessions = conversationSessionRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (ConversationSession session : sessions) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", session.getId());
+            item.put("conversationId", session.getConversationId());
+            item.put("title", StringUtils.isNotBlank(session.getTitle()) ? session.getTitle() : "新对话");
+            item.put("status", session.getStatus().name());
+            item.put("createdAt",
+                Objects.nonNull(session.getCreatedAt()) ? session.getCreatedAt().format(TIMESTAMP_FORMATTER) : null);
+            item.put("updatedAt",
+                Objects.nonNull(session.getUpdatedAt()) ? session.getUpdatedAt().format(TIMESTAMP_FORMATTER) : null);
+
+            result.add(item);
+        }
+
+        return result;
+    }
+
+    /**
+     * 为用户创建新会话，生成 UUID 作为逻辑会话ID，并更新 Redis 中的当前会话指针 （key 为 user:{userId}:current_conversation，有效期 7 天），使后续消息自动记录到新会话下
+     *
+     * @param userId
+     *            用户ID
+     * @return 新创建的会话信息，包含逻辑会话ID、标题、状态及创建/更新时间
+     */
+    public Map<String, Object> createConversationSession(Long userId) {
+        User user =
+            userRepository.findById(userId).orElseThrow(() -> new CustomException("未找到用户", HttpStatus.NOT_FOUND));
+
+        String conversationId = UUID.randomUUID().toString();
+
+        ConversationSession session = new ConversationSession();
+        session.setUser(user);
+        session.setConversationId(conversationId);
+        session.setTitle("新对话");
+        session.setStatus(SessionStatusEnum.ACTIVE);
+        conversationSessionRepository.save(session);
+
+        // Update Redis so the backend uses this new conversation for subsequent messages
+        String redisKey = "user:" + userId + ":current_conversation";
+        redisTemplate.opsForValue().set(redisKey, conversationId, Duration.ofDays(7));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("conversationId", conversationId);
+        result.put("title", "新对话");
+        result.put("status", "ACTIVE");
+        result.put("createdAt", session.getCreatedAt().format(TIMESTAMP_FORMATTER));
+        result.put("updatedAt", session.getUpdatedAt().format(TIMESTAMP_FORMATTER));
+
+        return result;
+    }
+
+    /**
+     * 归档指定会话，将会话状态置为 ARCHIVED，不在默认会话列表中展示
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     */
+    public void archiveConversationSession(String conversationId) {
+        ConversationSession session = conversationSessionRepository.findByConversationId(conversationId)
+            .orElseThrow(() -> new CustomException("对话不存在", HttpStatus.NOT_FOUND));
+        session.setStatus(SessionStatusEnum.ARCHIVED);
+
+        conversationSessionRepository.save(session);
+    }
+
+    /**
+     * 切换用户的当前会话，校验目标会话存在后，将 Redis 中的当前会话指针更新为目标会话 （key 为 user:{userId}:current_conversation，有效期 7 天），后续消息将记录到该会话下
+     *
+     * @param userId
+     *            用户ID
+     * @param conversationId
+     *            目标逻辑会话ID
+     */
+    public void switchCurrentConversation(Long userId, String conversationId) {
+        if (!conversationSessionRepository.existsByConversationId(conversationId)) {
+            throw new CustomException("对话不存在", HttpStatus.NOT_FOUND);
+        }
+
+        String redisKey = "user:" + userId + ":current_conversation";
+        redisTemplate.opsForValue().set(redisKey, conversationId, Duration.ofDays(7));
+    }
+
+    /**
+     * 取消归档指定会话，将会话状态恢复为 ACTIVE
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     */
+    public void unarchiveConversationSession(String conversationId) {
+        ConversationSession session = conversationSessionRepository.findByConversationId(conversationId)
+            .orElseThrow(() -> new CustomException("对话不存在", HttpStatus.NOT_FOUND));
+        session.setStatus(SessionStatusEnum.ACTIVE);
+
+        conversationSessionRepository.save(session);
     }
 }
