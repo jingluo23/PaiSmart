@@ -113,10 +113,6 @@ public class AdminController {
      */
     @GetMapping("/users")
     public ResponseResult<?> getAllUsers(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUserName = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUserName);
@@ -156,10 +152,6 @@ public class AdminController {
     @PostMapping("/knowledge/add")
     public ResponseResult<?> addKnowledgeDocument(@RequestHeader("Authorization") String token,
         @RequestParam("file") MultipartFile file, @RequestParam("description") String description) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -180,10 +172,6 @@ public class AdminController {
     @DeleteMapping("/knowledge/{documentId}")
     public ResponseResult<?> deleteKnowledgeDocument(@RequestHeader("Authorization") String token,
         @PathVariable("documentId") String documentId) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -202,10 +190,6 @@ public class AdminController {
      */
     @GetMapping("/system/status")
     public ResponseResult<?> getSystemStatus(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -238,10 +222,6 @@ public class AdminController {
     public ResponseResult<?> getUserActivities(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String username, @RequestParam(required = false) String start_date,
         @RequestParam(required = false) String end_date) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -269,10 +249,6 @@ public class AdminController {
     @GetMapping("/usage/overview")
     public ResponseResult<?> getUsageOverview(@RequestHeader("Authorization") String token,
         @RequestParam(defaultValue = "7") int days) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -288,10 +264,6 @@ public class AdminController {
      */
     @GetMapping("/rate-limits")
     public ResponseResult<?> getRateLimits(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -307,10 +279,6 @@ public class AdminController {
      */
     @GetMapping("/model-providers")
     public ResponseResult<?> getModelProviders(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -330,10 +298,6 @@ public class AdminController {
     public ResponseResult<?> updateModelProviders(@RequestHeader("Authorization") String token,
         @PathVariable String scope,
         @RequestBody @Validated UpdateScopeRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -355,10 +319,6 @@ public class AdminController {
     @PostMapping("/model-providers/{scope}/test")
     public ResponseResult<?> testModelProviderConnection(@RequestHeader("Authorization") String token,
         @PathVariable String scope, @RequestBody ProviderConnectionTestRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -378,10 +338,6 @@ public class AdminController {
     @PostMapping("/users/create-admin")
     public ResponseResult<?> createAdminUser(@RequestHeader("Authorization") String token,
         @RequestBody AdminUserRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -403,10 +359,6 @@ public class AdminController {
     @PostMapping("/invite-codes")
     public ResponseResult<?> createInviteCode(@RequestHeader("Authorization") String token,
         @RequestBody CreateInviteCodeRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -434,10 +386,6 @@ public class AdminController {
     public ResponseResult<?> listInviteCodes(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) Boolean enabled, @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -456,10 +404,6 @@ public class AdminController {
      */
     @PatchMapping("/invite-codes/{id}/disable")
     public ResponseResult<?> disableInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -480,10 +424,6 @@ public class AdminController {
      */
     @DeleteMapping("/invite-codes/{id}")
     public ResponseResult<?> deleteInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -507,10 +447,6 @@ public class AdminController {
     @PutMapping("/invite-codes/{id}")
     public ResponseResult<?> updateInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id,
         @RequestBody UpdateInviteCodeRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -530,10 +466,6 @@ public class AdminController {
     @PostMapping("/org-tags")
     public ResponseResult<?> createOrganizationTag(@RequestHeader("Authorization") String token,
         @RequestBody OrgTagRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -552,10 +484,6 @@ public class AdminController {
      */
     @GetMapping("/org-tags")
     public ResponseResult<?> getAllOrganizationTags(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -577,10 +505,6 @@ public class AdminController {
     public ResponseResult<?> assignOrgTagsToUser(@RequestHeader("Authorization") String token,
         @PathVariable Long userId,
         @RequestBody AssignOrgTagsRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -601,10 +525,6 @@ public class AdminController {
     @GetMapping("/org-tags/tree")
     public ResponseResult<?> getOrganizationTagTree(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -658,10 +578,6 @@ public class AdminController {
     @PutMapping("/org-tags/{tagId}")
     public ResponseResult<?> updateOrganizationTag(@RequestHeader("Authorization") String token,
         @PathVariable String tagId, @RequestBody OrgTagUpdateRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -682,10 +598,6 @@ public class AdminController {
     @DeleteMapping("/org-tags/{tagId}")
     public ResponseResult<?> deleteOrganizationTag(@RequestHeader("Authorization") String token,
         @PathVariable String tagId) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -711,10 +623,6 @@ public class AdminController {
         @RequestParam(required = false) String keyword, @RequestParam(required = false) String orgTag,
         @RequestParam(required = false) Integer status, @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -738,10 +646,6 @@ public class AdminController {
     @PostMapping("/users/{userId}/tokens/add")
     public ResponseResult<?> addUserTokens(@RequestHeader("Authorization") String token, @PathVariable Long userId,
         @RequestBody AddUserTokenRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -815,10 +719,6 @@ public class AdminController {
     public ResponseResult<?> getAllConversations(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String userid, @RequestParam(required = false) String start_date,
         @RequestParam(required = false) String end_date) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -932,10 +832,6 @@ public class AdminController {
     @PostMapping("/migrate-minio")
     public ResponseResult<?> migrateMinioFiles(@RequestHeader("Authorization") String token,
         @RequestParam String adminKey) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -961,10 +857,6 @@ public class AdminController {
      */
     @PostMapping("/clear-all-data")
     public ResponseResult<?> clearAllData(@RequestHeader("Authorization") String token, @RequestParam String adminKey) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -987,10 +879,6 @@ public class AdminController {
      */
     @GetMapping("/recharge-packages")
     public ResponseResult<?> getAllRechargePackages(@RequestHeader("Authorization") String token) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -1010,10 +898,6 @@ public class AdminController {
     @PostMapping("/recharge-packages")
     public ResponseResult<?> createRechargePackage(@RequestHeader("Authorization") String token,
         @RequestBody @Validated RechargePackageRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -1040,10 +924,6 @@ public class AdminController {
     public ResponseResult<?> updateRechargePackage(@RequestHeader("Authorization") String token,
         @PathVariable Integer id,
         @RequestBody RechargePackageRequest request) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
@@ -1101,10 +981,6 @@ public class AdminController {
     @DeleteMapping("/recharge-packages/{id}")
     public ResponseResult<?> deleteRechargePackage(@RequestHeader("Authorization") String token,
         @PathVariable Integer id) {
-        if (StringUtils.isBlank(token)) {
-            return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
-        }
-
         String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
 
         validateAdmin(adminUsername);
