@@ -186,4 +186,49 @@ public class ConversationService {
             }
         }
     }
+
+    /**
+     * 按逻辑会话ID查询消息历史，按时间正序排列
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     * @return 消息历史列表，每条消息包含角色、内容、时间戳、会话ID，可能包含引用映射
+     */
+    public List<Map<String, Object>> getMessagesByConversationId(String conversationId) {
+        List<Conversation> conversations =
+            conversationRepository.findByConversationIdOrderByTimestampAsc(conversationId);
+
+        return toMessageHistory(conversations, false);
+    }
+
+    /**
+     * 查询用户的对话记录，支持按时间范围过滤；用户名为 all 的管理员查询全部用户的对话，其余用户仅查询自己的对话
+     *
+     * @param username
+     *            用户名
+     * @param startDate
+     *            开始时间，与结束时间需同时提供
+     * @param endDate
+     *            结束时间，与开始时间需同时提供
+     * @return 符合条件的对话记录列表，按时间正序排列
+     */
+    public List<Conversation> getConversations(String username, LocalDateTime startDate, LocalDateTime endDate) {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new CustomException("未找到用户", HttpStatus.NOT_FOUND));
+
+        if (user.getRole() == Role.ADMIN && "all".equals(username)) {
+            if (Objects.nonNull(startDate) && Objects.nonNull(endDate)) {
+                return conversationRepository.findByTimestampBetweenOrderByTimestampAsc(startDate, endDate);
+            } else {
+                return conversationRepository.findAllByOrderByTimestampAsc();
+            }
+        } else {
+            if (Objects.nonNull(startDate) && Objects.nonNull(endDate)) {
+                return conversationRepository.findByUserIdAndTimestampBetweenOrderByTimestampAsc(user.getId(),
+                    startDate, endDate);
+            } else {
+                return conversationRepository.findByUserIdOrderByTimestampAsc(user.getId());
+            }
+        }
+    }
 }

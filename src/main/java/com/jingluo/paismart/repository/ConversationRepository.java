@@ -61,4 +61,13 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
      */
     @EntityGraph(attributePaths = "user")
     List<Conversation> findAllByOrderByTimestampAsc();
+
+    /**
+     * 按逻辑会话ID查询对话记录，按时间正序排列
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     * @return 对话记录列表
+     */
+    List<Conversation> findByConversationIdOrderByTimestampAsc(String conversationId);
 }
