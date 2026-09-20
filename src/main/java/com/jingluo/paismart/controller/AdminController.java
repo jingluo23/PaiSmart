@@ -112,7 +112,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/users")
-    public ResponseResult getAllUsers(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getAllUsers(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -154,7 +154,7 @@ public class AdminController {
      * @return
      */
     @PostMapping("/knowledge/add")
-    public ResponseResult addKnowledgeDocument(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> addKnowledgeDocument(@RequestHeader("Authorization") String token,
         @RequestParam("file") MultipartFile file, @RequestParam("description") String description) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -178,7 +178,7 @@ public class AdminController {
      * @return
      */
     @DeleteMapping("/knowledge/{documentId}")
-    public ResponseResult deleteKnowledgeDocument(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> deleteKnowledgeDocument(@RequestHeader("Authorization") String token,
         @PathVariable("documentId") String documentId) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -201,7 +201,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/system/status")
-    public ResponseResult getSystemStatus(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getSystemStatus(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -235,7 +235,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/user-activities")
-    public ResponseResult getUserActivities(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getUserActivities(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String username, @RequestParam(required = false) String start_date,
         @RequestParam(required = false) String end_date) {
         if (StringUtils.isBlank(token)) {
@@ -267,7 +267,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/usage/overview")
-    public ResponseResult getUsageOverview(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getUsageOverview(@RequestHeader("Authorization") String token,
         @RequestParam(defaultValue = "7") int days) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -287,7 +287,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/rate-limits")
-    public ResponseResult getRateLimits(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getRateLimits(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -306,7 +306,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/model-providers")
-    public ResponseResult getModelProviders(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getModelProviders(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -327,7 +327,8 @@ public class AdminController {
      * @return
      */
     @PutMapping("/model-providers/{scope}")
-    public ResponseResult updateModelProviders(@RequestHeader("Authorization") String token, @PathVariable String scope,
+    public ResponseResult<?> updateModelProviders(@RequestHeader("Authorization") String token,
+        @PathVariable String scope,
         @RequestBody @Validated UpdateScopeRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -352,7 +353,7 @@ public class AdminController {
      * @return 连通性测试结果（是否成功、结果描述、耗时）
      */
     @PostMapping("/model-providers/{scope}/test")
-    public ResponseResult testModelProviderConnection(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> testModelProviderConnection(@RequestHeader("Authorization") String token,
         @PathVariable String scope, @RequestBody ProviderConnectionTestRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -375,7 +376,7 @@ public class AdminController {
      * @return 创建结果提示
      */
     @PostMapping("/users/create-admin")
-    public ResponseResult createAdminUser(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> createAdminUser(@RequestHeader("Authorization") String token,
         @RequestBody AdminUserRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -400,7 +401,7 @@ public class AdminController {
      * @return 创建成功的邀请码列表
      */
     @PostMapping("/invite-codes")
-    public ResponseResult createInviteCode(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> createInviteCode(@RequestHeader("Authorization") String token,
         @RequestBody CreateInviteCodeRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -430,7 +431,7 @@ public class AdminController {
      * @return 邀请码分页列表
      */
     @GetMapping("/invite-codes")
-    public ResponseResult listInviteCodes(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> listInviteCodes(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) Boolean enabled, @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size) {
         if (StringUtils.isBlank(token)) {
@@ -454,7 +455,7 @@ public class AdminController {
      * @return 禁用结果提示
      */
     @PatchMapping("/invite-codes/{id}/disable")
-    public ResponseResult disableInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
+    public ResponseResult<?> disableInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -478,7 +479,7 @@ public class AdminController {
      * @return 删除结果提示
      */
     @DeleteMapping("/invite-codes/{id}")
-    public ResponseResult deleteInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
+    public ResponseResult<?> deleteInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -504,7 +505,7 @@ public class AdminController {
      * @return 更新后的邀请码
      */
     @PutMapping("/invite-codes/{id}")
-    public ResponseResult updateInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id,
+    public ResponseResult<?> updateInviteCode(@RequestHeader("Authorization") String token, @PathVariable Long id,
         @RequestBody UpdateInviteCodeRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -527,7 +528,7 @@ public class AdminController {
      * @return
      */
     @PostMapping("/org-tags")
-    public ResponseResult createOrganizationTag(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> createOrganizationTag(@RequestHeader("Authorization") String token,
         @RequestBody OrgTagRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -550,7 +551,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/org-tags")
-    public ResponseResult getAllOrganizationTags(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getAllOrganizationTags(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -573,7 +574,8 @@ public class AdminController {
      * @return
      */
     @PutMapping("/users/{userId}/org-tags")
-    public ResponseResult assignOrgTagsToUser(@RequestHeader("Authorization") String token, @PathVariable Long userId,
+    public ResponseResult<?> assignOrgTagsToUser(@RequestHeader("Authorization") String token,
+        @PathVariable Long userId,
         @RequestBody AssignOrgTagsRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -597,7 +599,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/org-tags/tree")
-    public ResponseResult getOrganizationTagTree(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getOrganizationTagTree(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -654,7 +656,7 @@ public class AdminController {
      * @return
      */
     @PutMapping("/org-tags/{tagId}")
-    public ResponseResult updateOrganizationTag(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> updateOrganizationTag(@RequestHeader("Authorization") String token,
         @PathVariable String tagId, @RequestBody OrgTagUpdateRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -678,7 +680,7 @@ public class AdminController {
      * @return
      */
     @DeleteMapping("/org-tags/{tagId}")
-    public ResponseResult deleteOrganizationTag(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> deleteOrganizationTag(@RequestHeader("Authorization") String token,
         @PathVariable String tagId) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -705,7 +707,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/users/list")
-    public ResponseResult getUserList(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getUserList(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String keyword, @RequestParam(required = false) String orgTag,
         @RequestParam(required = false) Integer status, @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size) {
@@ -734,7 +736,7 @@ public class AdminController {
      * @return 目标用户信息及追加后的用量快照
      */
     @PostMapping("/users/{userId}/tokens/add")
-    public ResponseResult addUserTokens(@RequestHeader("Authorization") String token, @PathVariable Long userId,
+    public ResponseResult<?> addUserTokens(@RequestHeader("Authorization") String token, @PathVariable Long userId,
         @RequestBody AddUserTokenRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -810,7 +812,7 @@ public class AdminController {
      * @return 按时间正序排列的对话消息列表
      */
     @GetMapping("/conversation")
-    public ResponseResult getAllConversations(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getAllConversations(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String userid, @RequestParam(required = false) String start_date,
         @RequestParam(required = false) String end_date) {
         if (StringUtils.isBlank(token)) {
@@ -928,7 +930,7 @@ public class AdminController {
      * @return 迁移结果报告，包含成功、跳过、失败数量及错误明细
      */
     @PostMapping("/migrate-minio")
-    public ResponseResult migrateMinioFiles(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> migrateMinioFiles(@RequestHeader("Authorization") String token,
         @RequestParam String adminKey) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -958,7 +960,7 @@ public class AdminController {
      * @return 清空结果提示
      */
     @PostMapping("/clear-all-data")
-    public ResponseResult clearAllData(@RequestHeader("Authorization") String token, @RequestParam String adminKey) {
+    public ResponseResult<?> clearAllData(@RequestHeader("Authorization") String token, @RequestParam String adminKey) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -984,7 +986,7 @@ public class AdminController {
      * @return
      */
     @GetMapping("/recharge-packages")
-    public ResponseResult getAllRechargePackages(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getAllRechargePackages(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
         }
@@ -1006,7 +1008,7 @@ public class AdminController {
      * @return
      */
     @PostMapping("/recharge-packages")
-    public ResponseResult createRechargePackage(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> createRechargePackage(@RequestHeader("Authorization") String token,
         @RequestBody @Validated RechargePackageRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -1035,7 +1037,8 @@ public class AdminController {
      * @return
      */
     @PutMapping("/recharge-packages/{id}")
-    public ResponseResult updateRechargePackage(@RequestHeader("Authorization") String token, @PathVariable Integer id,
+    public ResponseResult<?> updateRechargePackage(@RequestHeader("Authorization") String token,
+        @PathVariable Integer id,
         @RequestBody RechargePackageRequest request) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");
@@ -1096,7 +1099,7 @@ public class AdminController {
      * @return
      */
     @DeleteMapping("/recharge-packages/{id}")
-    public ResponseResult deleteRechargePackage(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> deleteRechargePackage(@RequestHeader("Authorization") String token,
         @PathVariable Integer id) {
         if (StringUtils.isBlank(token)) {
             return ResponseResult.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "token不能为空，请重新登录");

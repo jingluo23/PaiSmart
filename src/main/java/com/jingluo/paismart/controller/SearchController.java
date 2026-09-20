@@ -38,7 +38,8 @@ public class SearchController {
      * @return 检索结果列表
      */
     @GetMapping("/hybrid")
-    public ResponseResult hybridSearch(@RequestParam String query, @RequestParam(defaultValue = "10") int topK,
+    public ResponseResult<List<SearchResult>> hybridSearch(@RequestParam String query,
+        @RequestParam(defaultValue = "10") int topK,
         @RequestAttribute(value = "userId", required = false) String userId) {
         List<SearchResult> results;
         if (StringUtils.isNotBlank(userId)) {

@@ -40,7 +40,7 @@ public class AuthController {
      * @return 新的 token 和 refreshToken
      */
     @PostMapping("/refreshToken")
-    public ResponseResult refreshToken(@RequestBody @Validated RefreshTokenRequest request) {
+    public ResponseResult<?> refreshToken(@RequestBody @Validated RefreshTokenRequest request) {
         // 验证refreshToken是否有效（这里我们用相同的验证逻辑）
         if (!jwtUtils.validateRefreshToken(request.getRefreshToken())) {
             return ResponseResult.fail(HttpStatus.UNAUTHORIZED.value(), "无效的刷新令牌");
@@ -74,7 +74,7 @@ public class AuthController {
      * @return 携带错误码和错误信息的失败响应
      */
     @GetMapping("/error")
-    public ResponseResult customBackendError(@RequestParam String code, @RequestParam String msg) {
+    public ResponseResult<?> customBackendError(@RequestParam String code, @RequestParam String msg) {
         return ResponseResult.fail(Integer.parseInt(code), msg);
     }
 }

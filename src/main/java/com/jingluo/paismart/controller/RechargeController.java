@@ -47,7 +47,7 @@ public class RechargeController {
      * 查询可购买的充值套餐列表
      */
     @GetMapping("/packages")
-    public ResponseResult getPackages() {
+    public ResponseResult<?> getPackages() {
         List<RechargePackage> packages = rechargeService.getAllPackages();
 
         return ResponseResult.success(packages);
@@ -57,7 +57,7 @@ public class RechargeController {
      * 创建充值订单并返回微信预支付信息（支持套餐充值和自定义金额充值）
      */
     @PostMapping("/create-order")
-    public ResponseResult createRechargeOrder(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> createRechargeOrder(@RequestHeader("Authorization") String token,
         @RequestBody CreateRechargeOrderRequest request) {
         // 从 token 中提取用户 ID
         String userId = jwtUtils.extractUserIdFromToken(token.replace("Bearer ", ""));
@@ -76,7 +76,7 @@ public class RechargeController {
      * 微信支付结果通知回调，验签后更新订单状态并发放 token
      */
     @PostMapping("/pay-callback")
-    public ResponseResult payCallback(HttpServletRequest request) {
+    public ResponseResult<?> payCallback(HttpServletRequest request) {
         rechargeService.handlePayCallback(request);
 
         // 返回成功响应给微信
@@ -87,7 +87,7 @@ public class RechargeController {
      * 分页查询当前用户的充值订单列表，可按订单状态过滤
      */
     @GetMapping("/orders")
-    public ResponseResult getUserOrders(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getUserOrders(@RequestHeader("Authorization") String token,
         @RequestParam(required = false) String status) {
         String userId = jwtUtils.extractUserIdFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(userId)) {
@@ -112,7 +112,8 @@ public class RechargeController {
      * 查询订单详情，主动向微信核实最新支付状态
      */
     @GetMapping("/orders/{tradeNo}")
-    public ResponseResult getOrderDetail(@RequestHeader("Authorization") String token, @PathVariable String tradeNo) {
+    public ResponseResult<?> getOrderDetail(@RequestHeader("Authorization") String token,
+        @PathVariable String tradeNo) {
         String userId = jwtUtils.extractUserIdFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(userId)) {
             return ResponseResult.fail(HttpStatus.UNAUTHORIZED.value(), "无效的用户 token");

@@ -101,7 +101,7 @@ public class UploadController {
      * @return 已上传分片列表与上传进度
      */
     @PostMapping("/chunk")
-    public ResponseResult uploadChunk(@RequestParam("fileMd5") String fileMd5,
+    public ResponseResult<?> uploadChunk(@RequestParam("fileMd5") String fileMd5,
         @RequestParam("chunkIndex") int chunkIndex, @RequestParam("totalSize") long totalSize,
         @RequestParam("fileName") String fileName,
         @RequestParam(value = "totalChunks", required = false) Integer totalChunks,
@@ -200,7 +200,7 @@ public class UploadController {
      * @return 上传状态信息
      */
     @GetMapping("/status")
-    public ResponseResult getUploadStatus(@RequestParam("file_md5") String fileMd5,
+    public ResponseResult<?> getUploadStatus(@RequestParam("file_md5") String fileMd5,
         @RequestAttribute("userId") String userId) {
         // 获取文件信息
         String fileName = "unknown";
@@ -333,7 +333,7 @@ public class UploadController {
      * @return 合并后的文件预签名访问地址与预估 Embedding 用量
      */
     @PostMapping("/merge")
-    public ResponseResult mergeFile(@RequestBody MergeRequest request, @RequestAttribute("userId") String userId) {
+    public ResponseResult<?> mergeFile(@RequestBody MergeRequest request, @RequestAttribute("userId") String userId) {
         try {
             // 检查文件完整性和权限
             FileUpload fileUpload =
@@ -446,7 +446,7 @@ public class UploadController {
     /**
      * 构建文件已合并场景的响应：直接返回已合并文件的预签名访问地址，保证接口幂等
      */
-    private ResponseResult buildAlreadyMergedResponse(String fileMd5) throws Exception {
+    private ResponseResult<?> buildAlreadyMergedResponse(String fileMd5) throws Exception {
         return ResponseResult.success(uploadService.generateMergedObjectUrl(fileMd5));
     }
 
@@ -456,7 +456,7 @@ public class UploadController {
      * @return 支持的文件类型描述、扩展名与说明
      */
     @GetMapping("/supported-types")
-    public ResponseResult getSupportedFileTypes() {
+    public ResponseResult<?> getSupportedFileTypes() {
         Set<String> supportedTypes = fileTypeValidationService.getSupportedFileTypes();
 
         Set<String> supportedExtensions = fileTypeValidationService.getSupportedExtensions();

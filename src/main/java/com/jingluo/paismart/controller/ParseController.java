@@ -25,7 +25,7 @@ public class ParseController {
     private ParseService parseService;
 
     @PostMapping
-    public ResponseResult parseDocument(@RequestParam("file") MultipartFile file,
+    public ResponseResult<String> parseDocument(@RequestParam("file") MultipartFile file,
         @RequestParam("file_md5") String fileMd5, @RequestAttribute(value = "userId", required = false) String userId) {
         try {
             parseService.parseAndSave(fileMd5, file.getInputStream());

@@ -75,7 +75,8 @@ public class UserController {
      * @return 注册结果
      */
     @PostMapping("/register")
-    public ResponseResult register(@RequestBody @Validated UserRequest request, HttpServletRequest httpServletRequest) {
+    public ResponseResult<?> register(@RequestBody @Validated UserRequest request,
+        HttpServletRequest httpServletRequest) {
         String clientIp = resolveClientIp(httpServletRequest);
 
         rateLimitService.checkRegisterByIp(clientIp);
@@ -153,7 +154,7 @@ public class UserController {
      * @return 含 token 与 refreshToken 的登录结果，凭证无效时返回 401
      */
     @PostMapping("/login")
-    public ResponseResult login(@RequestBody @Validated UserRequest request, HttpServletRequest httpServletRequest) {
+    public ResponseResult<?> login(@RequestBody @Validated UserRequest request, HttpServletRequest httpServletRequest) {
         String clientIp = resolveClientIp(httpServletRequest);
 
         rateLimitService.checkLoginByIp(clientIp);
@@ -181,7 +182,7 @@ public class UserController {
      * @return 当前用户信息
      */
     @GetMapping("/me")
-    public ResponseResult getCurrentUser(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getCurrentUser(@RequestHeader("Authorization") String token) {
         String username = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(username)) {
             throw new CustomException("无效凭证", HttpStatus.UNAUTHORIZED);
@@ -224,7 +225,7 @@ public class UserController {
      * @return 组织标签信息
      */
     @GetMapping("/org-tags")
-    public ResponseResult getUserOrgTags(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getUserOrgTags(@RequestHeader("Authorization") String token) {
         String username = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(username)) {
             throw new CustomException("无效凭证", HttpStatus.UNAUTHORIZED);
@@ -247,7 +248,7 @@ public class UserController {
      * @return 设置结果
      */
     @PutMapping("/primary-org")
-    public ResponseResult setPrimaryOrg(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> setPrimaryOrg(@RequestHeader("Authorization") String token,
         @RequestBody @Validated PrimaryOrgRequest request) {
         String username = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(username)) {
@@ -267,7 +268,7 @@ public class UserController {
      * @return 用户各类型 Token 的用量快照
      */
     @GetMapping("/usage")
-    public ResponseResult getCurrentUserUsage(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> getCurrentUserUsage(@RequestHeader("Authorization") String token) {
         String username = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(username)) {
             throw new CustomException("无效凭证", HttpStatus.UNAUTHORIZED);
@@ -289,7 +290,7 @@ public class UserController {
      * @return 组织标签列表与主组织
      */
     @GetMapping("/upload-orgs")
-    public ResponseResult getUploadOrgTags(@RequestAttribute("userId") String userId) {
+    public ResponseResult<?> getUploadOrgTags(@RequestAttribute("userId") String userId) {
         // 获取用户所有组织标签
         List<String> orgTags = Arrays.asList(userService.getUserOrgTags(userId).get("orgTags").toString().split(","));
         // 获取用户主组织标签
@@ -312,7 +313,7 @@ public class UserController {
      * @return 登出结果
      */
     @PostMapping("/logout")
-    public ResponseResult logout(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> logout(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token) || !token.startsWith("Bearer ")) {
             return ResponseResult.fail(HttpStatus.BAD_REQUEST.value(), "令牌格式无效");
         }
@@ -340,7 +341,7 @@ public class UserController {
      * @return 登出结果
      */
     @PostMapping("/logout-all")
-    public ResponseResult logoutAll(@RequestHeader("Authorization") String token) {
+    public ResponseResult<?> logoutAll(@RequestHeader("Authorization") String token) {
         if (StringUtils.isBlank(token) || !token.startsWith("Bearer ")) {
             return ResponseResult.fail(HttpStatus.BAD_REQUEST.value(), "令牌格式无效");
         }
@@ -375,7 +376,7 @@ public class UserController {
      * @return 分页的 Token 变动记录
      */
     @GetMapping("/token-records")
-    public ResponseResult getTokenRecords(@RequestHeader("Authorization") String token,
+    public ResponseResult<?> getTokenRecords(@RequestHeader("Authorization") String token,
         @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         String userId = jwtUtils.extractUserIdFromToken(token.replace("Bearer ", ""));
         if (StringUtils.isBlank(userId)) {
