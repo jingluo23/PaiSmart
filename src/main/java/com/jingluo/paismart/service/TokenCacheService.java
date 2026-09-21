@@ -245,4 +245,47 @@ public class TokenCacheService {
             log.warn("无法删除所有用户令牌: {}", userId, e);
         }
     }
+
+    /**
+     * 判断访问令牌在 Redis 缓存中是否有效
+     * <p>
+     * 先检查是否已加入黑名单（登出/踢下线场景），再检查缓存 key 是否仍存在；
+     * Redis 访问异常时保守地返回无效。
+     *
+     * @param tokenId
+     *            令牌的唯一 ID
+     * @return true 表示令牌有效（未拉黑且缓存中仍存在）
+     */
+    public boolean isTokenValid(String tokenId) {
+        try {
+            // 先检查是否在黑名单中
+            if (isTokenBlacklisted(tokenId)) {
+                return Boolean.FALSE;
+            }
+
+            // 检查缓存中是否存在
+            String key = TOKEN_PREFIX + tokenId;
+
+            return redisTemplate.hasKey(key);
+        } catch (Exception e) {
+            return Boolean.FALSE;
+        }
+    }
+
+    /**
+     * 判断令牌是否已被加入黑名单
+     *
+     * @param tokenId
+     *            令牌的唯一 ID
+     * @return true 表示已拉黑；Redis 访问异常时保守地返回 true
+     */
+    public boolean isTokenBlacklisted(String tokenId) {
+        try {
+            String key = BLACKLIST_PREFIX + tokenId;
+
+            return redisTemplate.hasKey(key);
+        } catch (Exception e) {
+            return Boolean.FALSE;
+        }
+    }
 }

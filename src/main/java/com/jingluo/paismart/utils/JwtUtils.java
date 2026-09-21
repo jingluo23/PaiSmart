@@ -363,4 +363,38 @@ public class JwtUtils {
             log.warn("用户令牌全部失效错误: {}", userId, e);
         }
     }
+
+    /**
+     * 校验访问令牌：先查 Redis 缓存状态（快速失败），再验证 JWT 签名（双重验证）
+     *
+     * @param token
+     * @return true 表示令牌有效
+     */
+    public boolean validateToken(String token) {
+        try {
+            // 首先从JWT中提取tokenId（快速失败）
+            String tokenId = extractTokenIdFromToken(token);
+            if (StringUtils.isBlank(tokenId)) {
+                return Boolean.FALSE;
+            }
+
+            // 检查Redis缓存中的token状态
+            if (!tokenCacheService.isTokenValid(tokenId)) {
+                return Boolean.FALSE;
+            }
+
+            // Redis验证通过，再验证JWT签名（双重验证）
+            Jwts.parserBuilder().setSigningKey(getSigningKey()).build().parseClaimsJws(token);
+
+            return Boolean.TRUE;
+        } catch (ExpiredJwtException e) {
+            log.warn("令牌已过期: {}", e.getClaims().get("tokenId", String.class));
+        } catch (SignatureException e) {
+            log.warn("无效的令牌签名");
+        } catch (Exception e) {
+            log.error("令牌验证错误", e);
+        }
+
+        return Boolean.FALSE;
+    }
 }

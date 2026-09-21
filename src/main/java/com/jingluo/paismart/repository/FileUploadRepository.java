@@ -65,4 +65,11 @@ public interface FileUploadRepository extends JpaRepository<FileUpload, Long> {
      * @return 命中的上传记录列表
      */
     List<FileUpload> findByFileMd5In(List<String> md5List);
+
+    /**
+     * 按分片合并时间倒序查询第一条上传记录，用于统计知识库最近更新时间
+     *
+     * @return 合并时间最新的上传记录，无记录时为 empty
+     */
+    Optional<FileUpload> findFirstByOrderByMergedAtDesc();
 }

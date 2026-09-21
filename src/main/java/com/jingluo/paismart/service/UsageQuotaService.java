@@ -672,4 +672,54 @@ public class UsageQuotaService {
         stringRedisTemplate.opsForValue().increment(metricKey, increment);
         ensureExpiry(metricKey, retentionTtlSeconds());
     }
+
+    /**
+     * 估算一次对话请求的 token 消耗
+     * <p>
+     * 逐条累加 role 与 content 的文本 token 估算值，每条消息额外计入固定的结构开销。
+     *
+     * @param messages
+     *            OpenAI 格式的消息列表（role + content）
+     * @return 估算的 token 总数
+     */
+    public int estimateChatTokens(List<Map<String, String>> messages) {
+        if (CollectionUtils.isEmpty(messages)) {
+            return 0;
+        }
+
+        int total = 0;
+        for (Map<String, String> message : messages) {
+            total += 8;
+            total += estimateTextTokens(message.get("role"));
+            total += estimateTextTokens(message.get("content"));
+        }
+
+        return total;
+    }
+
+    /**
+     * 为 LLM 调用预预留当日 token 额度
+     * <p>
+     * 按估算 prompt + 上限 completion 之和预留，调用结束后按实际用量多退少补；
+     * 用户不受配额管理或 LLM 配额开关关闭时返回 noop 预留（不占额度）。
+     *
+     * @param userId
+     *            发起调用的用户 ID
+     * @param estimatedPromptTokens
+     *            估算的 prompt token 数
+     * @param maxCompletionTokens
+     *            completion token 上限
+     * @return token 预留凭证
+     */
+    public TokenReservation reserveLlmTokens(String userId, int estimatedPromptTokens, int maxCompletionTokens) {
+        if (!isQuotaManaged(userId) || !properties.getLlm().isEnabled()) {
+            return TokenReservation.noop("llm", userId);
+        }
+
+        int reserveTokens = Math.max(estimatedPromptTokens, 0) + Math.max(maxCompletionTokens, 0);
+        reserveTokens = Math.max(reserveTokens, 1);
+
+        return reserveDailyTokens("llm", userId, reserveTokens, properties.getLlm().getDayMaxTokens(),
+            "LLM当日Token额度已达上限");
+    }
 }
