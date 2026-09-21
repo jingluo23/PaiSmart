@@ -976,4 +976,49 @@ public class DocumentService {
     private String buildPdfSinglePageCacheKey(String fileMd5, int pageNumber) {
         return PDF_SINGLE_PAGE_CACHE_PREFIX + fileMd5 + ":" + pageNumber;
     }
+
+    /**
+     * 按文件 MD5 将最新上传记录标记为向量化处理中，供 Kafka 消费端调用（任务消息仅携带 fileMd5，无需先查询上传记录实体）
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param resetActualUsage
+     *            是否重置实际 Tokens/分块数为 null
+     */
+    public void markVectorizationProcessing(String fileMd5, boolean resetActualUsage) {
+        FileUpload fileUpload = fileUploadRepository.findFirstByFileMd5OrderByCreatedAtDesc(fileMd5)
+            .orElseThrow(() -> new RuntimeException("文件不存在"));
+
+        markVectorizationProcessing(fileUpload, resetActualUsage);
+    }
+
+    /**
+     * 按文件 MD5 将最新上传记录标记为向量化失败，错误信息取异常链中最有语义的一条
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param error
+     *            触发失败的异常
+     */
+    public void markVectorizationFailed(String fileMd5, Throwable error) {
+        FileUpload fileUpload = fileUploadRepository.findFirstByFileMd5OrderByCreatedAtDesc(fileMd5)
+            .orElseThrow(() -> new RuntimeException("文件不存在"));
+
+        markVectorizationFailed(fileUpload, error);
+    }
+
+    /**
+     * 按文件 MD5 将最新上传记录标记为向量化完成，回写实际 Tokens 与分块数并清空错误信息
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param result
+     *            实际向量化用量
+     */
+    public void markVectorizationCompleted(String fileMd5, VectorizationUsageResult result) {
+        FileUpload fileUpload = fileUploadRepository.findFirstByFileMd5OrderByCreatedAtDesc(fileMd5)
+            .orElseThrow(() -> new RuntimeException("文件不存在"));
+
+        markVectorizationCompleted(fileUpload, result);
+    }
 }
