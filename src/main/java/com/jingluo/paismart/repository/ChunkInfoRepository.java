@@ -3,9 +3,11 @@ package com.jingluo.paismart.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.jingluo.paismart.model.ChunkInfo;
 
@@ -46,4 +48,16 @@ public interface ChunkInfoRepository extends JpaRepository<ChunkInfo, Long> {
      * @return 分片记录列表
      */
     List<ChunkInfo> findByFileMd5OrderByChunkIndexAsc(String fileMd5);
+
+    /**
+     * 删除指定文件的全部上传分片记录，用于文档删除时清理分片元数据， 避免同 MD5 文件再次上传时误判分片已存在
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @return 删除的记录数
+     */
+    @Transactional
+    @Modifying
+    @Query("delete from ChunkInfo c where c.fileMd5 = :fileMd5")
+    int deleteByFileMd5(@Param("fileMd5") String fileMd5);
 }

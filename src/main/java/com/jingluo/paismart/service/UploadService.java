@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jingluo.paismart.config.MinioConfig;
 import com.jingluo.paismart.enums.FileUploadStatusEnum;
 import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.model.ChunkInfo;
@@ -62,6 +63,9 @@ public class UploadService {
 
     @Autowired
     private MinioClient minioClient;
+
+    @Autowired
+    private MinioConfig minioConfig;
 
     /**
      * 文件记录创建锁：按 userId+fileMd5 粒度防止并发上传首个分片时重复创建文件记录
@@ -675,5 +679,20 @@ public class UploadService {
      */
     public GetObjectResponse getMergedFileStream(String fileMd5) throws Exception {
         return minioClient.getObject(GetObjectArgs.builder().bucket("uploads").object("merged/" + fileMd5).build());
+    }
+
+    /**
+     * 将 MinIO 预签名 URL 中的内网 endpoint 域名替换为公网访问域名， 使返回给前端的下载/预览链接可直接访问；endpoint 与公网域名一致时原样返回
+     *
+     * @param minioUrl
+     *            MinIO 生成的原始 URL
+     * @return 公网域名替换后的 URL
+     */
+    public String transToPublicUrl(String minioUrl) {
+        if (StringUtils.isBlank(minioUrl) || Objects.equals(minioConfig.getEndpoint(), minioConfig.getPublicUrl())) {
+            return minioUrl;
+        }
+
+        return minioUrl.replaceFirst(minioConfig.getEndpoint(), minioConfig.getPublicUrl());
     }
 }

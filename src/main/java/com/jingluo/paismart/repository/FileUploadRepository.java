@@ -72,4 +72,72 @@ public interface FileUploadRepository extends JpaRepository<FileUpload, Long> {
      * @return 合并时间最新的上传记录，无记录时为 empty
      */
     Optional<FileUpload> findFirstByOrderByMergedAtDesc();
+
+    /**
+     * 删除指定文件的全部上传记录，用于文档删除时清理上传元数据
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @return 删除的记录数
+     */
+    @Transactional
+    @Modifying
+    @Query("delete from FileUpload f where f.fileMd5 = :fileMd5")
+    int deleteByFileMd5(@Param("fileMd5") String fileMd5);
+
+    /**
+     * 查询向量化状态为空的记录，用于定位需要回填状态的历史数据
+     *
+     * @return 向量化状态为空的上传记录列表
+     */
+    List<FileUpload> findAllByVectorizationStatusIsNull();
+
+    /**
+     * 查询用户本人上传或公开的文件，用于无组织标签用户的可访问文件列表
+     *
+     * @param userId
+     *            用户 ID
+     * @return 用户上传与公开文件的并集
+     */
+    List<FileUpload> findByUserIdOrIsPublicTrue(String userId);
+
+    /**
+     * 查询用户可访问的文件：本人上传、公开文件、以及组织标签命中集合且非公开的文件
+     *
+     * @param userId
+     *            用户 ID
+     * @param orgTagList
+     *            用户有效组织标签集合（含层级展开）
+     * @return 可访问文件列表
+     */
+    @Query("SELECT f FROM FileUpload f WHERE f.userId = :userId OR f.isPublic = true OR (f.orgTag IN :orgTagList AND f.isPublic = false)")
+    List<FileUpload> findAccessibleFilesWithTags(@Param("userId") String userId,
+        @Param("orgTagList") List<String> orgTagList);
+
+    /**
+     * 查询用户本人上传的全部文件记录
+     *
+     * @param userId
+     *            用户 ID
+     * @return 用户上传的文件列表
+     */
+    List<FileUpload> findByUserId(String userId);
+
+    /**
+     * 按文件名查询最近的公开文件，用于匿名（未登录）按文件名下载/预览场景
+     *
+     * @param fileName
+     *            文件名
+     * @return 最近的同名公开文件，无记录时为 empty
+     */
+    Optional<FileUpload> findFirstByFileNameAndIsPublicTrueOrderByCreatedAtDesc(String fileName);
+
+    /**
+     * 按文件 MD5 查询最近的公开文件，用于匿名（未登录）按 MD5 下载/预览场景
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @return 最近的公开文件，无记录时为 empty
+     */
+    Optional<FileUpload> findFirstByFileMd5AndIsPublicTrueOrderByCreatedAtDesc(String fileMd5);
 }

@@ -1,22 +1,8 @@
 package com.jingluo.paismart.utils;
 
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
-
-import javax.crypto.SecretKey;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
 import com.jingluo.paismart.service.TokenCacheService;
-
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
@@ -25,6 +11,17 @@ import io.jsonwebtoken.SignatureException;
 import io.jsonwebtoken.security.Keys;
 import io.micrometer.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
  * @author 鲸落
@@ -396,5 +393,46 @@ public class JwtUtils {
         }
 
         return Boolean.FALSE;
+    }
+
+    /**
+     * 从 Authorization 请求头中提取裸 token：剥离"Bearer "前缀后返回，
+     * 不携带前缀时视为整体即为 token，空白内容返回 null
+     *
+     * @param authorization
+     *            Authorization 请求头原始值
+     * @return 裸 token，无法提取时为 null
+     */
+    public String extractBearerToken(String authorization) {
+        if (StringUtils.isBlank(authorization)) {
+            return null;
+        }
+
+        String trimmed = authorization.trim();
+        if (trimmed.startsWith("Bearer ")) {
+            return trimmed.substring(7);
+        }
+
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * 从 token 中提取组织标签声明（忽略过期），解析失败时返回 null 而非抛出异常，
+     * 供匿名降级场景（如公开文件访问）安全使用
+     *
+     * @param token
+     *            JWT token
+     * @return 组织标签字符串，不存在或解析失败时为 null
+     */
+    public String extractOrgTagsFromToken(String token) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(token);
+
+            return Objects.nonNull(claims) ? claims.get("orgTags", String.class) : null;
+        } catch (Exception e) {
+            log.warn("从令牌中提取组织标签时出错: {}", token, e);
+
+            return null;
+        }
     }
 }
