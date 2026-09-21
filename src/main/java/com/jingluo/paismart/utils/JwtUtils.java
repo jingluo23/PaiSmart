@@ -1,8 +1,22 @@
 package com.jingluo.paismart.utils;
 
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
 import com.jingluo.paismart.service.TokenCacheService;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
@@ -10,18 +24,8 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.SignatureException;
 import io.jsonwebtoken.security.Keys;
 import io.micrometer.common.util.StringUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
 
 /**
  * @author 鲸落
@@ -53,6 +57,16 @@ public class JwtUtils {
      * 7 days (refresh token有效期)
      */
     private static final long REFRESH_TOKEN_EXPIRATION_TIME = 604800000;
+
+    /**
+     * 5分钟：当剩余时间少于5分钟时开始刷新
+     */
+    private static final long REFRESH_THRESHOLD = 300000;
+
+    /**
+     * 10分钟：token过期后的宽限期
+     */
+    private static final long REFRESH_WINDOW = 600000;
 
     /**
      * 从 JWT Token 中提取用户名
@@ -431,6 +445,138 @@ public class JwtUtils {
             return Objects.nonNull(claims) ? claims.get("orgTags", String.class) : null;
         } catch (Exception e) {
             log.warn("从令牌中提取组织标签时出错: {}", token, e);
+
+            return null;
+        }
+    }
+
+    /**
+     * 从请求头 Authorization 中提取 JWT Token（去掉 "Bearer " 前缀）
+     *
+     * @param request
+     *            当前请求
+     * @return Token 字符串，请求头缺失或格式不符时返回 null
+     */
+    public String extractToken(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (StringUtils.isNotBlank(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            // 去掉 "Bearer " 前缀
+            return bearerToken.substring(7);
+        }
+
+        return null;
+    }
+
+    /**
+     * 判断未过期的 Token 是否需要预刷新（剩余有效期不足 REFRESH_THRESHOLD 时返回 true）
+     *
+     * @param token
+     *            JWT Token
+     * @return true 表示临期应刷新
+     */
+    public boolean shouldRefreshToken(String token) {
+        try {
+            Claims claims = extractClaims(token);
+            if (Objects.isNull(claims)) {
+                return Boolean.FALSE;
+            }
+
+            long expirationTime = claims.getExpiration().getTime();
+            long currentTime = System.currentTimeMillis();
+            long remainingTime = expirationTime - currentTime;
+
+            return remainingTime > 0 && remainingTime < REFRESH_THRESHOLD;
+        } catch (Exception e) {
+            log.warn("无法检查令牌是否应刷新: {}", e.getMessage());
+
+            return Boolean.FALSE;
+        }
+    }
+
+    /**
+     * 解析 Token 并返回 Claims，Token 无效或已过期时返回 null（不抛出异常）
+     *
+     * @param token
+     *            JWT Token
+     * @return Claims 对象，解析失败时为 null
+     */
+    private Claims extractClaims(String token) {
+        try {
+            return Jwts.parserBuilder().setSigningKey(getSigningKey()).build().parseClaimsJws(token).getBody();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 刷新 Token：从旧 Token（允许已过期）中提取用户名并重新签发全新 Token
+     *
+     * @param oldToken
+     *            旧 JWT Token
+     * @return 新 Token，旧 Token 无法解析或缺少用户名时返回 null
+     */
+    public String refreshToken(String oldToken) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(oldToken);
+            if (Objects.isNull(claims)) {
+                return null;
+            }
+
+            String username = claims.getSubject();
+            if (StringUtils.isBlank(username)) {
+                return null;
+            }
+
+            // 重新生成token
+
+            return generateToken(username);
+        } catch (Exception e) {
+            log.warn("刷新令牌时出错: {}", e.getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * 判断已过期的 Token 是否仍在刷新宽限期内（过期时间未超过 REFRESH_WINDOW 时返回 true）
+     *
+     * @param token
+     *            JWT Token
+     * @return true 表示处于宽限期，允许刷新
+     */
+    public boolean canRefreshExpiredToken(String token) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(token);
+            if (Objects.isNull(claims)) {
+                return Boolean.FALSE;
+            }
+
+            long expirationTime = claims.getExpiration().getTime();
+            long currentTime = System.currentTimeMillis();
+            long expiredTime = currentTime - expirationTime;
+
+            return expiredTime > 0 && expiredTime < REFRESH_WINDOW;
+        } catch (Exception e) {
+            log.warn("无法检查已过期的令牌是否可以刷新: {}", e.getMessage());
+
+            return Boolean.FALSE;
+        }
+    }
+
+    /**
+     * 从 Token 中提取用户角色（兼容已过期的 Token）
+     *
+     * @param token
+     *            JWT Token
+     * @return 角色字符串（如 USER/ADMIN），提取失败时返回 null
+     */
+    public String extractRoleFromToken(String token) {
+        try {
+            Claims claims = extractClaimsIgnoreExpiration(token);
+
+            return Objects.nonNull(claims) ? claims.get("role", String.class) : null;
+        } catch (Exception e) {
+            log.warn("从令牌中提取角色时出错: {}", token, e);
 
             return null;
         }

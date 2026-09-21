@@ -17,12 +17,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @author 鲸落
  * @date 2026/9/13 16:43
  * @Description 用户类
  */
+// JPA 要求实体必须有 public/protected 无参构造，因下方存在自定义构造函数需显式补上
+@NoArgsConstructor
 @Data
 @Entity
 @Table(name = "users", uniqueConstraints = @UniqueConstraint(columnNames = "username"))

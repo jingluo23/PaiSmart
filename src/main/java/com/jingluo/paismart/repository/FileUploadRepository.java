@@ -140,4 +140,40 @@ public interface FileUploadRepository extends JpaRepository<FileUpload, Long> {
      * @return 最近的公开文件，无记录时为 empty
      */
     Optional<FileUpload> findFirstByFileMd5AndIsPublicTrueOrderByCreatedAtDesc(String fileMd5);
+
+    /**
+     * 按用户ID与文件名查询历史文件记录（按创建时间倒序），用于启动知识库排查同名历史导入
+     *
+     * @param userId
+     *            用户 ID
+     * @param fileName
+     *            文件名
+     * @return 该用户同名文件的记录列表
+     */
+    List<FileUpload> findByUserIdAndFileNameOrderByCreatedAtDesc(String userId, String fileName);
+
+    /**
+     * 删除指定用户名下某 MD5 的全部文件记录，用于启动知识库导入失败后的回滚清理
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param userId
+     *            用户 ID
+     * @return 实际删除的记录条数
+     */
+    @Transactional
+    @Modifying
+    @Query("delete from FileUpload f where f.fileMd5 = :fileMd5 and f.userId = :userId")
+    int deleteByFileMd5AndUserId(@Param("fileMd5") String fileMd5, @Param("userId") String userId);
+
+    /**
+     * 统计指定用户名下某 MD5 的文件记录条数，用于检测重复导入
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param userId
+     *            用户 ID
+     * @return 文件记录条数
+     */
+    long countByFileMd5AndUserId(String fileMd5, String userId);
 }

@@ -46,4 +46,13 @@ public interface DocumentVectorRepository extends JpaRepository<DocumentVector, 
      * @return 分块记录数
      */
     long countByFileMd5(String fileMd5);
+
+    /**
+     * 统计指定文件中带页码信息的向量分块记录数，用于校验 PDF 分块元数据是否完整
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @return 带页码的分块记录数
+     */
+    long countByFileMd5AndPageNumberIsNotNull(String fileMd5);
 }

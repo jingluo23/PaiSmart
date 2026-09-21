@@ -12,12 +12,15 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @Author: 鲸落
  * @Date: 2026/9/15 16:25
  * @Desc: 组织标签实体，支持树形层级结构，并可限制该标签下用户上传文件的大小上限
  */
+// JPA 要求实体必须有 public/protected 无参构造，因下方存在自定义构造函数需显式补上
+@NoArgsConstructor
 @Data
 @Entity
 @Table(name = "organization_tags")

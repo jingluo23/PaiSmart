@@ -11,6 +11,7 @@ import com.jingluo.paismart.entity.EsDocument;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.CountResponse;
 import co.elastic.clients.elasticsearch.core.DeleteByQueryRequest;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch.core.bulk.BulkResponseItem;
@@ -91,6 +92,26 @@ public class ElasticsearchService {
 
             // 如果发生异常，抛出运行时异常，表明批量索引失败
             throw new RuntimeException("批量索引失败", e);
+        }
+    }
+
+    /**
+     * 按文件 MD5 统计该文档在知识库索引中的记录条数
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @return 索引命中的文档数量
+     * @throws RuntimeException
+     *             统计请求执行失败时抛出
+     */
+    public long countByFileMd5(String fileMd5) {
+        try {
+            CountResponse response = elasticsearchClient
+                .count(c -> c.index("knowledge_base").query(q -> q.term(t -> t.field("fileMd5").value(fileMd5))));
+
+            return response.count();
+        } catch (Exception e) {
+            throw new RuntimeException("统计文档失败", e);
         }
     }
 }

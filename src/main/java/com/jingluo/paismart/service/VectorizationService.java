@@ -106,4 +106,22 @@ public class VectorizationService {
         return vectors.stream().map(vector -> new TextChunk(vector.getChunkId(), vector.getTextContent(),
             vector.getPageNumber(), vector.getAnchorText())).toList();
     }
+
+    /**
+     * 向量化指定文档（不返回用量信息），供启动知识库初始化等不关心 token 用量的场景调用
+     *
+     * @param fileMd5
+     *            文件 MD5
+     * @param userId
+     *            文件归属用户ID
+     * @param orgTag
+     *            归属组织标签
+     * @param isPublic
+     *            是否公开
+     * @param requesterId
+     *            发起向量化请求的用户ID（用于用量统计）
+     */
+    public void vectorize(String fileMd5, String userId, String orgTag, boolean isPublic, String requesterId) {
+        vectorizeWithUsage(fileMd5, userId, orgTag, isPublic, requesterId);
+    }
 }
