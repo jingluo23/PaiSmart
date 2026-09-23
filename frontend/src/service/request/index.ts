@@ -1,6 +1,6 @@
 import type { AxiosResponse } from 'axios';
 import type { RequestOption } from '@sa/axios';
-import { BACKEND_ERROR_CODE, createFlatRequest } from '@sa/axios';
+import { BACKEND_ERROR_CODE, HTTP_ERROR_CODES, createFlatRequest } from '@sa/axios';
 import { useAuthStore } from '@/store/modules/auth';
 import { getServiceBaseURL } from '@/utils/service';
 import { $t } from '@/locales';
@@ -40,6 +40,7 @@ function getFlatRequest(options: Partial<RequestOption<App.Service.Response>> = 
         console.log('%c [ 👉 onBackendFail 👈 ]-35', 'font-size:16px; background:#3cd735; color:#80ff79;', response);
         const authStore = useAuthStore();
         const responseCode = String(response.data.code);
+        const responseMessage = response.data.message ?? '';
 
         function handleLogout() {
           authStore.resetStore();
@@ -49,7 +50,7 @@ function getFlatRequest(options: Partial<RequestOption<App.Service.Response>> = 
           handleLogout();
           window.removeEventListener('beforeunload', handleLogout);
 
-          request.state.errMsgStack = request.state.errMsgStack.filter(msg => msg !== response.data.message);
+          request.state.errMsgStack = request.state.errMsgStack.filter(msg => msg !== responseMessage);
         }
 
         // when the backend response code is in `logoutCodes`, it means the user will be logged out and redirected to login page
@@ -61,15 +62,15 @@ function getFlatRequest(options: Partial<RequestOption<App.Service.Response>> = 
 
         // when the backend response code is in `modalLogoutCodes`, it means the user will be logged out by displaying a modal
         const modalLogoutCodes = import.meta.env.VITE_SERVICE_MODAL_LOGOUT_CODES?.split(',') || [];
-        if (modalLogoutCodes.includes(responseCode) && !request.state.errMsgStack?.includes(response.data.message)) {
-          request.state.errMsgStack = [...(request.state.errMsgStack || []), response.data.message];
+        if (modalLogoutCodes.includes(responseCode) && !request.state.errMsgStack?.includes(responseMessage)) {
+          request.state.errMsgStack = [...(request.state.errMsgStack || []), responseMessage];
 
           // prevent the user from refreshing the page
           window.addEventListener('beforeunload', handleLogout);
 
           window.$dialog?.error({
             title: $t('common.error'),
-            content: response.data.message,
+            content: responseMessage,
             positiveText: $t('common.confirm'),
             maskClosable: false,
             closeOnEsc: false,
@@ -112,7 +113,9 @@ function getFlatRequest(options: Partial<RequestOption<App.Service.Response>> = 
         const backendMessage = error.response?.data?.message;
 
         // get backend error message and code
-        if (error.code && BACKEND_ERROR_CODE.split(',').includes(error.code)) {
+        // 业务错误（后端 code != 200 抛出）与 axios 原生 HTTP 错误均需取后端 message 展示
+        const messageErrorCodes = [BACKEND_ERROR_CODE, ...HTTP_ERROR_CODES.split(',')];
+        if (error.code && messageErrorCodes.includes(error.code)) {
           message = backendMessage || message;
           backendErrorCode = String(error.response?.data?.code || '');
         }

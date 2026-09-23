@@ -545,11 +545,11 @@ declare namespace App {
     /** The backend service response data */
     type Response<T = unknown> = {
       /** The backend service response code */
-      code: string;
-      /** The backend service response message */
-      message: string;
-      /** The backend service response data */
-      data: T;
+      code: number;
+      /** The backend service response message, absent when the backend omits it (Jackson NON_NULL) */
+      message: string | null;
+      /** The backend service response data, absent on message-only success responses */
+      data?: T;
     };
 
     /** The demo backend service response data */

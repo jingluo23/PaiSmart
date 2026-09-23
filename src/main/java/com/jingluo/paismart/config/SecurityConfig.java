@@ -3,11 +3,14 @@ package com.jingluo.paismart.config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.jingluo.paismart.utils.ResponseResultWriter;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,6 +30,9 @@ public class SecurityConfig {
 
     @Autowired
     private OrgTagAuthorizationFilter orgTagAuthorizationFilter;
+
+    @Autowired
+    private ResponseResultWriter responseResultWriter;
 
     /**
      * 构建安全过滤链：关闭 CSRF、按路径配置访问权限、启用无状态会话，
@@ -73,6 +79,15 @@ public class SecurityConfig {
                 // 配置会话管理策略
                 // 设置会话创建策略为STATELESS，表示不会创建会话，通常用于无状态的API应用
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // 配置认证/授权异常处理：与全局异常处理器保持一致，统一返回 ResponseResult 结构，
+                // HTTP 状态保持 200，业务码由 body 携带，由前端按 code 统一判断成败
+                .exceptionHandling(exception -> exception
+                    // 未认证（无 Token 或 Token 已彻底失效）访问受保护接口
+                    .authenticationEntryPoint((request, response, authException) -> responseResultWriter.write(response,
+                        HttpStatus.UNAUTHORIZED.value(), "未认证或登录已失效，请重新登录"))
+                    // 已认证但权限不足（如普通用户访问管理员接口）
+                    .accessDeniedHandler((request, response, accessDeniedException) -> responseResultWriter.write(response,
+                        HttpStatus.FORBIDDEN.value(), "无权限访问该资源")))
                 // 添加JWT认证过滤器
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 // 添加组织标签授权过滤器

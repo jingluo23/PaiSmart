@@ -1,5 +1,6 @@
 package com.jingluo.paismart.config;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,8 +16,10 @@ import com.jingluo.paismart.domain.response.ResourceInfo;
 import com.jingluo.paismart.model.FileUpload;
 import com.jingluo.paismart.repository.FileUploadRepository;
 import com.jingluo.paismart.utils.JwtUtils;
+import com.jingluo.paismart.utils.ResponseResultWriter;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,9 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
     @Autowired
     private FileUploadRepository fileUploadRepository;
 
+    @Autowired
+    private ResponseResultWriter responseResultWriter;
+
     /**
      * 默认组织标签
      */
@@ -49,7 +55,8 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
     private static final String PRIVATE_TAG_PREFIX = "PRIVATE_";
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+        throws ServletException, IOException {
         try {
             String path = request.getRequestURI();
 
@@ -130,7 +137,7 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
 
             // 如果资源未找到，返回404
             if (Objects.isNull(resourceInfo)) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                responseResultWriter.write(response, HttpServletResponse.SC_NOT_FOUND, "资源不存在或已被删除");
 
                 return;
             }
@@ -148,7 +155,7 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
             // 从请求头获取token
             String token = jwtUtils.extractToken(request);
             if (StringUtils.isBlank(token)) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                responseResultWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "未认证或登录已失效，请重新登录");
 
                 return;
             }
@@ -174,7 +181,7 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
             // 检查是否为私人组织标签资源
             if (resourceOrgTag.startsWith(PRIVATE_TAG_PREFIX)) {
                 // 私人标签资源只允许拥有者访问，此处已排除拥有者和管理员，拒绝访问
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                responseResultWriter.write(response, HttpServletResponse.SC_FORBIDDEN, "无权限访问该资源");
 
                 return;
             }
@@ -182,7 +189,7 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
             // 获取用户的组织标签
             String userOrgTags = jwtUtils.extractOrgTagsFromToken(token);
             if (StringUtils.isBlank(userOrgTags)) {
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                responseResultWriter.write(response, HttpServletResponse.SC_FORBIDDEN, "无权限访问该资源");
 
                 return;
             }
@@ -191,12 +198,12 @@ public class OrgTagAuthorizationFilter extends OncePerRequestFilter {
             if (isUserAuthorized(userOrgTags, resourceOrgTag)) {
                 filterChain.doFilter(request, response);
             } else {
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                responseResultWriter.write(response, HttpServletResponse.SC_FORBIDDEN, "无权限访问该资源");
             }
         } catch (Exception e) {
             log.warn("组织标签授权过滤器发生错误: {}", e.getMessage(), e);
 
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            responseResultWriter.write(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "系统繁忙，请稍后重试");
         }
     }
 

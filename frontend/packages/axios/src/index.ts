@@ -3,7 +3,7 @@ import type { AxiosResponse, CreateAxiosDefaults, InternalAxiosRequestConfig } f
 import axiosRetry from 'axios-retry';
 import { customAlphabet } from 'nanoid';
 import { createAxiosConfig, createDefaultOptions, createRetryOptions } from './options';
-import { BACKEND_ERROR_CODE, REQUEST_ID_KEY } from './constant';
+import { BACKEND_ERROR_CODE, HTTP_ERROR_CODES, REQUEST_ID_KEY } from './constant';
 import type {
   CustomAxiosRequestConfig,
   FlatRequestInstance,
@@ -190,6 +190,6 @@ export function createFlatRequest<ResponseData = any, State = Record<string, unk
   return flatRequest;
 }
 
-export { BACKEND_ERROR_CODE, REQUEST_ID_KEY };
+export { BACKEND_ERROR_CODE, HTTP_ERROR_CODES, REQUEST_ID_KEY };
 export type * from './type';
 export type { CreateAxiosDefaults, AxiosError };
