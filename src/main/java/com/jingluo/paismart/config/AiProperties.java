@@ -1,6 +1,7 @@
 package com.jingluo.paismart.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 import com.jingluo.paismart.domain.response.Generation;
 import com.jingluo.paismart.domain.response.Prompt;
@@ -13,6 +14,7 @@ import lombok.Data;
  * @Author: 鲸落
  * @Date: 2026/9/20 17:32
  */
+@Component
 @ConfigurationProperties(prefix = "ai")
 @Data
 public class AiProperties {

@@ -45,7 +45,6 @@ public class WxPayService {
     @Autowired
     private WxPayConfig wxPayConfig;
 
-    @Autowired
     private NativePayService nativePayService;
 
     /**

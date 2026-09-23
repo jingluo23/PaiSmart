@@ -63,6 +63,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
             <version>0.11.5</version>
@@ -139,13 +145,6 @@
             <groupId>com.hankcs</groupId>
             <artifactId>hanlp</artifactId>
             <version>portable-1.8.6</version>
-        </dependency>
-
-        <!-- Elasticsearch Java Client -->
-        <dependency>
-            <groupId>co.elastic.clients</groupId>
-            <artifactId>elasticsearch-java</artifactId>
-            <version>8.10.0</version>
         </dependency>
 
         <!-- Alibaba Cloud OCR SDK -->

@@ -32,6 +32,7 @@ import com.jingluo.paismart.model.ModelProviderConfig;
 import com.jingluo.paismart.repository.ModelProviderConfigRepository;
 
 import io.micrometer.common.util.StringUtils;
+import jakarta.annotation.PostConstruct;
 
 /**
  * @Author: 鲸落
@@ -81,11 +82,10 @@ public class ModelProviderConfigService {
     private volatile ModelProviderSettingsView currentSettings;
 
     /**
-     * 构造默认配置
-     *
-     * @return
+     * 初始化默认配置（必须在依赖注入完成后执行，构造阶段字段尚未注入）
      */
-    public ModelProviderConfigService() {
+    @PostConstruct
+    void initDefaultSettings() {
         this.currentSettings = buildDefaultSettings();
     }
 

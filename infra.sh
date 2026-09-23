@@ -9,16 +9,16 @@ LOG_DIR="${RUNTIME_DIR}/logs"
 
 mkdir -p "${PID_DIR}" "${LOG_DIR}"
 
-MINIO_DIR="/Users/itwanger/Downloads/minio1"
+MINIO_DIR="/Users/jingluo/Downloads/minio1"
 MINIO_API_PORT="9000"
 MINIO_CONSOLE_PORT="9001"
 MINIO_CMD="./minio server data/ --console-address :${MINIO_CONSOLE_PORT}"
 
-KAFKA_DIR="/Users/itwanger/Downloads/kafka/kafka_2.13-3.9.0"
+KAFKA_DIR="/Users/jingluo/Downloads/kafka/kafka_2.13-3.9.0"
 KAFKA_PORT="9092"
 KAFKA_CMD="./start-kafka.sh"
 
-ELASTICSEARCH_DIR="/Users/itwanger/Downloads/elasticsearch-8.10.0"
+ELASTICSEARCH_DIR="/Users/jingluo/Downloads/elasticsearch-8.10.0"
 ELASTICSEARCH_PORT="9200"
 ELASTICSEARCH_SCHEME="${ELASTICSEARCH_SCHEME:-https}"
 ELASTICSEARCH_CMD='ES_JAVA_OPTS="-Xms500M -Xmx500M" ./bin/elasticsearch'

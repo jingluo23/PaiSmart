@@ -1,6 +1,7 @@
 package com.jingluo.paismart.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 import com.jingluo.paismart.domain.response.DualWindowLimit;
 import com.jingluo.paismart.domain.response.TokenBudgetLimit;
@@ -14,6 +15,7 @@ import lombok.Data;
  * @Desc: 限制配置
  */
 @Data
+@Component
 @ConfigurationProperties(prefix = "rate-limit")
 public class RateLimitProperties {
 
