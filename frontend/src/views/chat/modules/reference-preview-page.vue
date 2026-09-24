@@ -78,6 +78,21 @@ function syncFromStorage() {
   }
 }
 
+// 将引用详情响应应用到页面状态，缺失字段保留现有值
+function applyReferenceDetail(data: Api.Document.ReferenceDetailResponse) {
+  fileName.value = data.fileName || fileName.value;
+  fileMd5.value = data.fileMd5 || fileMd5.value;
+  pageNumber.value = data.pageNumber || pageNumber.value;
+  anchorText.value = data.anchorText || anchorText.value;
+  retrievalMode.value = data.retrievalMode ?? null;
+  retrievalLabel.value = data.retrievalLabel || '';
+  retrievalQuery.value = data.retrievalQuery || '';
+  evidenceSnippet.value = data.evidenceSnippet || '';
+  matchedChunkText.value = data.matchedChunkText || '';
+  score.value = data.score ?? null;
+  chunkId.value = data.chunkId ?? null;
+}
+
 async function loadReferenceDetail() {
   syncFallbackFromQuery();
   const restoredFromStorage = syncFromStorage();
@@ -107,17 +122,7 @@ async function loadReferenceDetail() {
       return;
     }
 
-    fileName.value = data.fileName || fileName.value;
-    fileMd5.value = data.fileMd5 || fileMd5.value;
-    pageNumber.value = data.pageNumber || pageNumber.value;
-    anchorText.value = data.anchorText || anchorText.value;
-    retrievalMode.value = data.retrievalMode ?? null;
-    retrievalLabel.value = data.retrievalLabel || '';
-    retrievalQuery.value = data.retrievalQuery || '';
-    evidenceSnippet.value = data.evidenceSnippet || '';
-    matchedChunkText.value = data.matchedChunkText || '';
-    score.value = data.score ?? null;
-    chunkId.value = data.chunkId ?? null;
+    applyReferenceDetail(data);
   } catch (error: any) {
     loadError.value = error?.message || '引用详情加载失败';
   } finally {
@@ -137,7 +142,7 @@ function handleBack() {
 watch(
   () => route.query,
   () => {
-    void loadReferenceDetail();
+    loadReferenceDetail();
   },
   { immediate: true }
 );

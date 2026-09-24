@@ -59,7 +59,6 @@ async function handleSubmit() {
     localStg.remove('rememberedLogin');
   }
 }
-
 </script>
 
 <template>

@@ -1,19 +1,19 @@
 <script setup lang="tsx">
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { DataTableColumns, FormRules, PaginationProps } from 'naive-ui';
 import {
   NButton,
-  NInput,
-  NInputNumber,
-  NSwitch,
-  NTag,
-  NPopconfirm,
-  NModal,
+  NCard,
+  NEllipsis,
   NForm,
   NFormItem,
-  NEllipsis,
-  NCard
+  NInput,
+  NInputNumber,
+  NModal,
+  NPopconfirm,
+  NSwitch,
+  NTag
 } from 'naive-ui';
-import { ref, reactive, computed, onMounted } from 'vue';
 import { request } from '@/service/request';
 
 const TOKEN_UNIT = 10000;
@@ -204,11 +204,7 @@ const columns = computed<DataTableColumns<RechargePackage>>(() => [
     key: 'enabled',
     title: '状态',
     width: 80,
-    render: row => (
-      <NTag type={row.enabled ? 'success' : 'default'}>
-        {row.enabled ? '已启用' : '已禁用'}
-      </NTag>
-    )
+    render: row => <NTag type={row.enabled ? 'success' : 'default'}>{row.enabled ? '已启用' : '已禁用'}</NTag>
   },
   {
     key: 'packageDesc',
@@ -232,10 +228,16 @@ const columns = computed<DataTableColumns<RechargePackage>>(() => [
     fixed: 'right',
     render: row => (
       <div class="flex gap-2">
-        <NButton size="small" onClick={() => handleEdit(row)}>编辑</NButton>
+        <NButton size="small" onClick={() => handleEdit(row)}>
+          编辑
+        </NButton>
         <NPopconfirm onPositiveClick={() => handleDelete(row.id)}>
           {{
-            trigger: () => <NButton size="small" type="error">删除</NButton>,
+            trigger: () => (
+              <NButton size="small" type="error">
+                删除
+              </NButton>
+            ),
             default: () => '确定删除该充值套餐吗？'
           }}
         </NPopconfirm>
@@ -283,19 +285,36 @@ function handleEdit(row: RechargePackage) {
   visible.value = true;
 }
 
+// 将提交失败的不同异常形态转换为用户可读的提示
+function showSubmitError(e: unknown) {
+  console.error('提交异常:', e);
+  if (Array.isArray(e)) {
+    window.$message?.error('请填写完整的表单信息!');
+    return;
+  }
+  // validate 失败时会抛出异常，包含验证错误信息
+  if ((e as { errors?: unknown })?.errors) {
+    // errors 可能是一个数组，取第一个错误的提示信息
+    const errors = (e as { errors: unknown }).errors;
+    const firstError = Array.isArray(errors) ? errors[0] : errors;
+    const errorMessage = (firstError as { message?: string } | undefined)?.message || '请填写完整的表单信息';
+    window.$message?.warning(errorMessage);
+  } else {
+    window.$message?.error(`操作失败：${(e as Error).message}`);
+  }
+}
+
 async function handleSubmit() {
-  console.log("开始提交，editingId:", editingId.value, "isEditing:", isEditing.value);
+  console.log('开始提交，editingId:', editingId.value, 'isEditing:', isEditing.value);
 
   try {
     // 先进行表单验证
     await validate();
-    console.log("表单验证通过");
+    console.log('表单验证通过');
 
     submitting.value = true;
 
-    const url = isEditing.value
-      ? `/admin/recharge-packages/${editingId.value}`
-      : '/admin/recharge-packages';
+    const url = isEditing.value ? `/admin/recharge-packages/${editingId.value}` : '/admin/recharge-packages';
 
     const method = isEditing.value ? 'put' : 'post';
 
@@ -304,45 +323,33 @@ async function handleSubmit() {
       ...model.value,
       packagePrice: model.value.packagePriceYuan !== null ? Math.round(model.value.packagePriceYuan * 100) : null,
       llmToken: model.value.llmTokenWan !== null ? Math.round(model.value.llmTokenWan * TOKEN_UNIT) : null,
-      embeddingToken: model.value.embeddingTokenWan !== null ? Math.round(model.value.embeddingTokenWan * TOKEN_UNIT) : null
+      embeddingToken:
+        model.value.embeddingTokenWan !== null ? Math.round(model.value.embeddingTokenWan * TOKEN_UNIT) : null
     };
     // 删除 packagePriceYuan 字段，不传递给后端
     delete (submitData as any).packagePriceYuan;
     delete (submitData as any).llmTokenWan;
     delete (submitData as any).embeddingTokenWan;
 
-    console.log("提交数据:", submitData);
+    console.log('提交数据:', submitData);
 
-    const { error, data } = await request({
+    const { error, data: result } = await request({
       url,
       method,
       data: submitData
     });
 
-    console.log("返回结果:", error, data);
+    console.log('返回结果:', error, result);
 
     if (!error) {
       window.$message?.success(isEditing.value ? '更新成功' : '创建成功');
       visible.value = false;
       await getData();
     } else {
-      window.$message?.error('操作失败：' + (error.message || '未知错误'));
+      window.$message?.error(`操作失败：${error.message || '未知错误'}`);
     }
   } catch (e: any) {
-    console.error("提交异常:", e);
-    if (Array.isArray(e)) {
-      window.$message?.error('请填写完整的表单信息!');
-      return;
-    }
-    // validate 失败时会抛出异常，包含验证错误信息
-    if (e?.errors) {
-      // errors 可能是一个数组，取第一个错误的提示信息
-      const firstError = Array.isArray(e.errors) ? e.errors[0] : e.errors;
-      const errorMessage = firstError?.message || '请填写完整的表单信息';
-      window.$message?.warning(errorMessage);
-    } else {
-      window.$message?.error('操作失败：' + (e as Error).message);
-    }
+    showSubmitError(e);
   } finally {
     submitting.value = false;
   }
@@ -359,7 +366,7 @@ async function handleDelete(id: number) {
       window.$message?.success('删除成功');
       await getData();
     }
-  } catch (e) {
+  } catch {
     window.$message?.error('删除失败');
   }
 }
@@ -394,18 +401,9 @@ onMounted(() => {
       :show-icon="false"
       class="w-600px!"
     >
-      <NForm
-        ref="formRef"
-        :model="model"
-        :rules="rules"
-        label-placement="left"
-        label-width="120px"
-      >
+      <NForm ref="formRef" :model="model" :rules="rules" label-placement="left" label-width="120px">
         <NFormItem label="套餐名称" path="packageName">
-          <NInput
-            v-model:value="model.packageName"
-            placeholder="请输入套餐名称"
-          />
+          <NInput v-model:value="model.packageName" placeholder="请输入套餐名称" />
         </NFormItem>
         <NFormItem label="套餐价格（元）" path="packagePriceYuan">
           <NInputNumber
@@ -440,12 +438,7 @@ onMounted(() => {
         </NFormItem>
         <NFormItem label="套餐描述" path="packageDesc">
           <div class="w-full flex flex-col gap-2">
-            <NInput
-              v-model:value="model.packageDesc"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入套餐描述"
-            />
+            <NInput v-model:value="model.packageDesc" type="textarea" :rows="3" placeholder="请输入套餐描述" />
             <div class="flex justify-end">
               <NButton size="small" secondary @click="autofillPackageCopy">一键生成文案</NButton>
             </div>
@@ -461,32 +454,22 @@ onMounted(() => {
         </NFormItem>
         <NFormItem label="排序顺序" path="sortOrder">
           <NInputNumber
-              v-model:value="model.sortOrder"
-              :min="0"
-              :step="1"
-              placeholder="请输入排序顺序（数字越小越靠前）"
-              class="w-full"
+            v-model:value="model.sortOrder"
+            :min="0"
+            :step="1"
+            placeholder="请输入排序顺序（数字越小越靠前）"
+            class="w-full"
           />
-          <div class="mt-2 text-xs text-stone-400">
-            提示：数字越小，在列表中显示越靠前
-          </div>
+          <div class="mt-2 text-xs text-stone-400">提示：数字越小，在列表中显示越靠前</div>
         </NFormItem>
         <NFormItem label="是否启用" path="enabled">
-          <NSwitch
-            v-model:value="model.enabled"
-            :checked-value="true"
-            :unchecked-value="false"
-          />
+          <NSwitch v-model:value="model.enabled" :checked-value="true" :unchecked-value="false" />
         </NFormItem>
       </NForm>
 
-      <div class="flex justify-end gap-4 mt-6">
+      <div class="mt-6 flex justify-end gap-4">
         <NButton @click="visible = false">取消</NButton>
-        <NButton
-          type="primary"
-          :loading="submitting"
-          @click="handleSubmit"
-        >
+        <NButton type="primary" :loading="submitting" @click="handleSubmit">
           {{ isEditing ? '保存' : '创建' }}
         </NButton>
       </div>
