@@ -30,7 +30,9 @@ function cloneModelProviderScope(payload: Api.Admin.ModelProviderScopeSettings):
   };
 }
 
-function cloneModelProviderSettings(payload?: Api.Admin.ModelProviderSettings | null): Api.Admin.ModelProviderSettings | null {
+function cloneModelProviderSettings(
+  payload?: Api.Admin.ModelProviderSettings | null
+): Api.Admin.ModelProviderSettings | null {
   if (!payload) {
     return null;
   }
@@ -55,14 +57,23 @@ async function getModelProviders() {
 function buildProviderPayload(scope: Api.Admin.ModelProviderScopeSettings) {
   return {
     activeProvider: scope.activeProvider,
-    providers: scope.providers.map(item => ({
-      provider: item.provider,
-      apiBaseUrl: item.apiBaseUrl,
-      model: item.model,
-      apiKey: item.apiKeyInput?.trim() || '',
-      dimension: scope.scope === 'embedding' ? item.dimension : null,
-      enabled: item.enabled
-    }))
+    providers: scope.providers.map(item => {
+      // 关闭的 provider 只提交状态，配置字段不回传，后端保留其现有配置
+      if (!item.enabled) {
+        return {
+          provider: item.provider,
+          enabled: false
+        };
+      }
+      return {
+        provider: item.provider,
+        apiBaseUrl: item.apiBaseUrl,
+        model: item.model,
+        apiKey: item.apiKeyInput?.trim() || '',
+        dimension: scope.scope === 'embedding' ? item.dimension : null,
+        enabled: true
+      };
+    })
   };
 }
 
@@ -124,8 +135,9 @@ onMounted(() => {
       </template>
 
       <NSpin :show="modelProvidersLoading">
-        <div class="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500">
-          这里管理平台代付的模型接入配置。API Key 输入为空时保留现有密钥，不会回显明文。Embedding 如果切换 active provider，后端会拦截需要重嵌入的危险变更。
+        <div class="mb-4 border border-stone-200 rounded-2xl bg-stone-50 px-4 py-3 text-xs text-stone-500">
+          这里管理平台代付的模型接入配置。API Key 输入为空时保留现有密钥，不会回显明文。Embedding 如果切换 active
+          provider，后端会拦截需要重嵌入的危险变更。
         </div>
 
         <div v-if="modelProviders" class="grid gap-4">
@@ -138,10 +150,21 @@ onMounted(() => {
               <div class="flex items-center gap-3">
                 <NSelect
                   v-model:value="modelProviders.llm.activeProvider"
-                  :options="modelProviders.llm.providers.map(item => ({ label: item.displayName, value: item.provider, disabled: !item.enabled }))"
+                  :options="
+                    modelProviders.llm.providers.map(item => ({
+                      label: item.displayName,
+                      value: item.provider,
+                      disabled: !item.enabled
+                    }))
+                  "
                   class="min-w-180px"
                 />
-                <NButton type="primary" size="small" :loading="modelProvidersSaving" @click="submitModelProviders('llm')">
+                <NButton
+                  type="primary"
+                  size="small"
+                  :loading="modelProvidersSaving"
+                  @click="submitModelProviders('llm')"
+                >
                   保存 LLM 配置
                 </NButton>
               </div>
@@ -171,7 +194,12 @@ onMounted(() => {
                   </div>
                   <div>
                     <div class="limit-label">新 API Key</div>
-                    <NInput v-model:value="item.apiKeyInput" type="password" show-password-on="click" placeholder="留空则保留现有值" />
+                    <NInput
+                      v-model:value="item.apiKeyInput"
+                      type="password"
+                      show-password-on="click"
+                      placeholder="留空则保留现有值"
+                    />
                   </div>
                 </div>
                 <div class="mt-3 flex justify-end">
@@ -185,22 +213,39 @@ onMounted(() => {
             <div class="provider-scope-header">
               <div>
                 <div class="provider-scope-title">Embedding Provider</div>
-                <div class="provider-scope-sub">当前版本只支持配置管理；切 active provider 若需要重嵌入会被后端拦截</div>
+                <div class="provider-scope-sub">
+                  当前版本只支持配置管理；切 active provider 若需要重嵌入会被后端拦截
+                </div>
               </div>
               <div class="flex items-center gap-3">
                 <NSelect
                   v-model:value="modelProviders.embedding.activeProvider"
-                  :options="modelProviders.embedding.providers.map(item => ({ label: item.displayName, value: item.provider, disabled: !item.enabled }))"
+                  :options="
+                    modelProviders.embedding.providers.map(item => ({
+                      label: item.displayName,
+                      value: item.provider,
+                      disabled: !item.enabled
+                    }))
+                  "
                   class="min-w-180px"
                 />
-                <NButton type="primary" size="small" :loading="modelProvidersSaving" @click="submitModelProviders('embedding')">
+                <NButton
+                  type="primary"
+                  size="small"
+                  :loading="modelProvidersSaving"
+                  @click="submitModelProviders('embedding')"
+                >
                   保存 Embedding 配置
                 </NButton>
               </div>
             </div>
 
             <div class="provider-grid">
-              <div v-for="item in modelProviders.embedding.providers" :key="`embedding-${item.provider}`" class="provider-card">
+              <div
+                v-for="item in modelProviders.embedding.providers"
+                :key="`embedding-${item.provider}`"
+                class="provider-card"
+              >
                 <div class="provider-card-header">
                   <div>
                     <div class="provider-name">{{ item.displayName }}</div>
@@ -227,7 +272,12 @@ onMounted(() => {
                   </div>
                   <div class="sm:col-span-2">
                     <div class="limit-label">新 API Key</div>
-                    <NInput v-model:value="item.apiKeyInput" type="password" show-password-on="click" placeholder="留空则保留现有值" />
+                    <NInput
+                      v-model:value="item.apiKeyInput"
+                      type="password"
+                      show-password-on="click"
+                      placeholder="留空则保留现有值"
+                    />
                   </div>
                 </div>
                 <div class="mt-3 flex justify-end">

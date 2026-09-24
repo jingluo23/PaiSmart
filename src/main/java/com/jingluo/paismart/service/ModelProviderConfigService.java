@@ -438,9 +438,15 @@ public class ModelProviderConfigService {
         boolean activeEnabled = false;
         for (ProviderUpsertRequest provider : request.getProviders()) {
             String providerCode = normalizeProvider(provider.getProvider());
+            boolean enabled = Objects.isNull(provider.getEnabled()) || provider.getEnabled();
             if (providerCode.equals(activeProvider)) {
                 activeExists = true;
-                activeEnabled = Objects.isNull(provider.getEnabled()) || provider.getEnabled();
+                activeEnabled = enabled;
+            }
+
+            // 关闭的 provider 只提交状态，配置字段允许缺失，由 updateScope 保留现有配置
+            if (!enabled) {
+                continue;
             }
 
             if (StringUtils.isBlank(provider.getApiBaseUrl())) {

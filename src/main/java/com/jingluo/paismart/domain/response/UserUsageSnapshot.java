@@ -25,6 +25,16 @@ public class UserUsageSnapshot {
     private long chatRequestCount;
 
     /**
+     * LLM Token 钱包余额（长期累积额度，区别于 llm 中的当日用量视图）
+     */
+    private long llmBalanceTokens;
+
+    /**
+     * Embedding Token 钱包余额（长期累积额度，区别于 embedding 中的当日用量视图）
+     */
+    private long embeddingBalanceTokens;
+
+    /**
      * LLM使用量
      */
     private QuotaView llm;

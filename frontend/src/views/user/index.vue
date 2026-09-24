@@ -72,8 +72,14 @@ const { columns, columnChecks, data, getData, loading, mobilePagination, searchP
       width: 220,
       render: row => {
         const quota = row.usage?.llm;
+        const balance = Number(row.usage?.llmBalanceTokens || 0).toLocaleString();
         if (!quota?.enabled) {
-          return <span class="text-stone-400">未启用</span>;
+          return (
+            <div class="flex flex-col gap-1 text-xs">
+              <span>钱包余额 {balance}</span>
+              <span class="text-stone-400">当日配额未启用</span>
+            </div>
+          );
         }
         return (
           <div class="flex flex-col gap-1 text-xs">
@@ -83,6 +89,7 @@ const { columns, columnChecks, data, getData, loading, mobilePagination, searchP
             <span class="text-stone-400">
               剩余 {Number(quota.remainingTokens || 0).toLocaleString()} · {quota.requestCount} 次
             </span>
+            <span>钱包余额 {balance}</span>
           </div>
         );
       }
@@ -93,8 +100,14 @@ const { columns, columnChecks, data, getData, loading, mobilePagination, searchP
       width: 220,
       render: row => {
         const quota = row.usage?.embedding;
+        const balance = Number(row.usage?.embeddingBalanceTokens || 0).toLocaleString();
         if (!quota?.enabled) {
-          return <span class="text-stone-400">未启用</span>;
+          return (
+            <div class="flex flex-col gap-1 text-xs">
+              <span>钱包余额 {balance}</span>
+              <span class="text-stone-400">当日配额未启用</span>
+            </div>
+          );
         }
         return (
           <div class="flex flex-col gap-1 text-xs">
@@ -104,6 +117,7 @@ const { columns, columnChecks, data, getData, loading, mobilePagination, searchP
             <span class="text-stone-400">
               剩余 {Number(quota.remainingTokens || 0).toLocaleString()} · {quota.requestCount} 次
             </span>
+            <span>钱包余额 {balance}</span>
           </div>
         );
       }

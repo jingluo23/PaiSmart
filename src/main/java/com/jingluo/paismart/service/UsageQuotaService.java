@@ -48,6 +48,9 @@ public class UsageQuotaService {
     @Autowired
     private UsageQuotaProperties properties;
 
+    @Autowired
+    private UserTokenService userTokenService;
+
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
 
     /**
@@ -80,6 +83,7 @@ public class UsageQuotaService {
         for (String userId : userIds) {
             result.put(userId,
                 new UserUsageSnapshot(currentDay(), readCounter(buildMetricKey("chat", userId)),
+                    userTokenService.getLlmTokenBalance(userId), userTokenService.getEmbeddingTokenBalance(userId),
                     buildQuotaView("llm", userId, properties.getLlm()),
                     buildQuotaView("embedding", userId, properties.getEmbedding())));
         }
@@ -271,7 +275,7 @@ public class UsageQuotaService {
      * @return
      */
     private UserUsageSnapshot emptySnapshot() {
-        return new UserUsageSnapshot(currentDay(), 0, new QuotaView(false, 0, 0, 0, 0),
+        return new UserUsageSnapshot(currentDay(), 0, 0, 0, new QuotaView(false, 0, 0, 0, 0),
             new QuotaView(false, 0, 0, 0, 0));
     }
 

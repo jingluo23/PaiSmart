@@ -20,27 +20,23 @@ public class ProviderUpsertRequest {
     private String provider;
 
     /**
-     * API 基础地址
+     * API 基础地址；关闭的 provider 允许为空，由服务层保留现有配置
      */
-    @NotBlank(message = "apiBaseUrl不能为空")
     private String apiBaseUrl;
 
     /**
-     * 模型名称
+     * 模型名称；关闭的 provider 允许为空，由服务层保留现有配置
      */
-    @NotBlank(message = "model不能为空")
     private String model;
 
     /**
-     * API 密钥
+     * API 密钥；为空时服务层保留现有密文
      */
-    @NotBlank(message = "apiKey不能为空")
     private String apiKey;
 
     /**
-     * 向量维度
+     * 向量维度；关闭的 provider 允许为空
      */
-    @NotNull(message = "dimension不能为空")
     private Integer dimension;
 
     /**

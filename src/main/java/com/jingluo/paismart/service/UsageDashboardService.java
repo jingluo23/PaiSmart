@@ -157,6 +157,6 @@ public class UsageDashboardService {
      * @return
      */
     private UserUsageSnapshot emptySnapshot() {
-        return new UserUsageSnapshot("", 0, new QuotaView(false, 0, 0, 0, 0), new QuotaView(false, 0, 0, 0, 0));
+        return new UserUsageSnapshot("", 0, 0, 0, new QuotaView(false, 0, 0, 0, 0), new QuotaView(false, 0, 0, 0, 0));
     }
 }

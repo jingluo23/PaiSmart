@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, h } from 'vue';
+import { computed, h, onMounted, ref } from 'vue';
 import { NTag } from 'naive-ui';
 const { userInfo } = storeToRefs(useAuthStore());
 
@@ -12,6 +12,8 @@ const tags = ref<Api.OrgTag.Mine>({
 const usage = ref<Api.User.UsageSnapshot>({
   day: '',
   chatRequestCount: 0,
+  llmBalanceTokens: 0,
+  embeddingBalanceTokens: 0,
   llm: {
     enabled: false,
     usedTokens: 0,
@@ -39,6 +41,29 @@ const pagination = ref({
   total: 0,
   pageCount: 0
 });
+// Token 记录相关方法
+const getTokenRecords = async () => {
+  tokenRecordLoading.value = true;
+  try {
+    const { error, data } = await request({
+      url: '/users/token-records',
+      method: 'GET',
+      params: {
+        page: pagination.value.page - 1,
+        size: pagination.value.pageSize
+      }
+    });
+
+    if (!error && data) {
+      tokenRecords.value = data.content || [];
+      pagination.value.total = data.totalElements || 0;
+      pagination.value.pageCount = data.totalPages || 0;
+    }
+  } finally {
+    tokenRecordLoading.value = false;
+  }
+};
+
 const getPersonalData = async () => {
   loading.value = true;
   const [{ error: orgError, data: orgData }, { error: usageError, data: usageData }] = await Promise.all([
@@ -97,29 +122,6 @@ const setPrimaryOrg = async () => {
     getOrgTags();
   }
   submitLoading.value = false;
-};
-
-// Token 记录相关方法
-const getTokenRecords = async () => {
-  tokenRecordLoading.value = true;
-  try {
-    const { error, data } = await request({
-      url: '/users/token-records',
-      method: 'GET',
-      params: {
-        page: pagination.value.page - 1,
-        size: pagination.value.pageSize
-      }
-    });
-
-    if (!error && data) {
-      tokenRecords.value = data.content || [];
-      pagination.value.total = data.totalElements || 0;
-      pagination.value.pageCount = data.totalPages || 0;
-    }
-  } finally {
-    tokenRecordLoading.value = false;
-  }
 };
 
 const handlePageChange = (page: number) => {
@@ -223,18 +225,29 @@ const tokenRecordColumns = computed(() => [
           <div class="flex flex-col gap-4 p-4">
             <div class="grid gap-4 md:grid-cols-2">
               <NCard size="small" embedded class="quota-card">
-                <div class="text-sm font-semibold text-stone-700">LLM Token</div>
+                <div class="text-sm text-stone-700 font-semibold">LLM Token</div>
+                <div class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
+                  <div>钱包余额 {{ usage.llmBalanceTokens.toLocaleString() }}</div>
+                </div>
                 <div v-if="usage.llm.enabled" class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
-                  <div>已用 {{ usage.llm.usedTokens.toLocaleString() }} / {{ usage.llm.limitTokens.toLocaleString() }}</div>
+                  <div>
+                    已用 {{ usage.llm.usedTokens.toLocaleString() }} / {{ usage.llm.limitTokens.toLocaleString() }}
+                  </div>
                   <div>剩余 {{ usage.llm.remainingTokens.toLocaleString() }}</div>
                   <div>请求 {{ usage.llm.requestCount.toLocaleString() }} 次</div>
                 </div>
                 <div v-else class="mt-3 text-sm text-stone-400">当前未启用配额</div>
               </NCard>
               <NCard size="small" embedded class="quota-card">
-                <div class="text-sm font-semibold text-stone-700">Embedding Token</div>
+                <div class="text-sm text-stone-700 font-semibold">Embedding Token</div>
+                <div class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
+                  <div>钱包余额 {{ usage.embeddingBalanceTokens.toLocaleString() }}</div>
+                </div>
                 <div v-if="usage.embedding.enabled" class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
-                  <div>已用 {{ usage.embedding.usedTokens.toLocaleString() }} / {{ usage.embedding.limitTokens.toLocaleString() }}</div>
+                  <div>
+                    已用 {{ usage.embedding.usedTokens.toLocaleString() }} /
+                    {{ usage.embedding.limitTokens.toLocaleString() }}
+                  </div>
                   <div>剩余 {{ usage.embedding.remainingTokens.toLocaleString() }}</div>
                   <div>请求 {{ usage.embedding.requestCount.toLocaleString() }} 次</div>
                 </div>
@@ -243,29 +256,29 @@ const tokenRecordColumns = computed(() => [
             </div>
 
             <div class="flex flex-wrap gap-4">
-            <NCard
-              v-for="tag in tags.orgTagDetails"
-              :key="tag.tagId"
-              size="small"
-              embedded
-              hoverable
-              class="w-[calc((100%-32px)/3)]"
-              :segmented="{ content: true, footer: 'soft' }"
-              @click="showModal(tag.tagId)"
-            >
-              <div class="flex items-center justify-between">
-                <div>{{ tag.name }}</div>
-                <NTag v-if="tag.tagId === tags.primaryOrg" type="primary" size="small">
-                  主标签
-                  <template #icon>
-                    <icon-solar:verified-check-bold-duotone class="text-icon" />
-                  </template>
-                </NTag>
-              </div>
-              <template #footer>
-                <NEllipsis :line-clamp="3">{{ tag.description }}</NEllipsis>
-              </template>
-            </NCard>
+              <NCard
+                v-for="tag in tags.orgTagDetails"
+                :key="tag.tagId"
+                size="small"
+                embedded
+                hoverable
+                class="w-[calc((100%-32px)/3)]"
+                :segmented="{ content: true, footer: 'soft' }"
+                @click="showModal(tag.tagId)"
+              >
+                <div class="flex items-center justify-between">
+                  <div>{{ tag.name }}</div>
+                  <NTag v-if="tag.tagId === tags.primaryOrg" type="primary" size="small">
+                    主标签
+                    <template #icon>
+                      <icon-solar:verified-check-bold-duotone class="text-icon" />
+                    </template>
+                  </NTag>
+                </div>
+                <template #footer>
+                  <NEllipsis :line-clamp="3">{{ tag.description }}</NEllipsis>
+                </template>
+              </NCard>
             </div>
           </div>
         </NScrollbar>
