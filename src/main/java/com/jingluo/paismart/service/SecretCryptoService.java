@@ -40,12 +40,14 @@ public class SecretCryptoService {
      * @return 脱敏后的密钥；长度不足 8 位时返回 ****
      */
     public String mask(String raw) {
-        if (StringUtils.isNotBlank(raw)) {
+        if (StringUtils.isBlank(raw)) {
             return "";
         }
+
         if (raw.length() <= 8) {
             return "****";
         }
+
         return raw.substring(0, 4) + "****" + raw.substring(raw.length() - 4);
     }
 
@@ -56,9 +58,10 @@ public class SecretCryptoService {
      * @return
      */
     public String decrypt(String ciphertext) {
-        if (ciphertext == null || ciphertext.isBlank()) {
+        if (StringUtils.isBlank(ciphertext)) {
             return null;
         }
+
         try {
             String[] parts = ciphertext.split(":", 2);
             if (parts.length != 2) {
@@ -73,6 +76,7 @@ public class SecretCryptoService {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(TAG_LENGTH_BITS, iv));
             byte[] decrypted = cipher.doFinal(encrypted);
+
             return new String(decrypted, StandardCharsets.UTF_8);
         } catch (Exception exception) {
             throw new IllegalStateException("模型配置密钥解密失败", exception);
@@ -86,7 +90,7 @@ public class SecretCryptoService {
      * @return
      */
     public String encrypt(String raw) {
-        if (StringUtils.isNotBlank(raw)) {
+        if (StringUtils.isBlank(raw)) {
             return null;
         }
 
