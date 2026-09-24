@@ -26,11 +26,15 @@ target
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
+/build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
 ### VS Code ###
 .vscode/
 frontend/.vscode/*
-frontend/build/*
+
+### Frontend generated assets ###
+# vite-plugin-forvmsc 会在 dev/build 时从 node_modules/vue-markdown-shiki/public 自动复制生成
+frontend/public/languages/
+frontend/public/themes/
