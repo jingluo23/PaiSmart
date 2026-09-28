@@ -1,9 +1,12 @@
 package com.jingluo.paismart.service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +18,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jingluo.paismart.domain.response.GenerationMeta;
 import com.jingluo.paismart.domain.response.GenerationSnapshot;
+import com.jingluo.paismart.enums.GenerationStatus;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 聊天生成任务状态服务
@@ -26,6 +32,7 @@ import com.jingluo.paismart.domain.response.GenerationSnapshot;
  * @Author: 鲸落
  * @Date: 2026/9/20 16:42
  */
+@Slf4j
 @Service
 public class ChatGenerationStateService {
 
@@ -40,6 +47,11 @@ public class ChatGenerationStateService {
      */
     private static final TypeReference<Map<String, Map<String, Object>>> REFERENCE_MAP_TYPE =
         new TypeReference<Map<String, Map<String, Object>>>() {};
+
+    /**
+     * 生成态数据在 Redis 中的统一过期时间（元数据、内容、引用映射与活动任务 key）
+     */
+    private static final Duration GENERATION_TTL = Duration.ofMinutes(30);
 
     /**
      * 查询指定用户的生成任务快照（带归属校验）
@@ -176,5 +188,198 @@ public class ChatGenerationStateService {
      */
     private String activeGenerationKey(String userId) {
         return "chat:user:" + userId + ":active_generation";
+    }
+
+    /**
+     * 将任务标记为已取消（用户主动停止生成）
+     *
+     * @param generationId
+     *            生成任务 ID
+     */
+    public void markCancelled(String generationId) {
+        updateTerminalState(generationId, GenerationStatus.CANCELLED, null, null);
+    }
+
+    /**
+     * 将任务写入终态（取消/失败/完成）：按需保存引用映射、更新元数据状态与结束时间， 并清除用户活动任务标记
+     * <p>
+     * 元数据不存在（已过期或非法 ID）时静默返回，不抛错。
+     *
+     * @param generationId
+     *            生成任务 ID
+     * @param status
+     *            终态状态
+     * @param errorMessage
+     *            错误信息（仅失败态使用）
+     * @param referenceMappings
+     *            引用映射（完成态时保存；为空时仅刷新）
+     */
+    private void updateTerminalState(String generationId, GenerationStatus status, String errorMessage,
+        Map<String, Map<String, Object>> referenceMappings) {
+        GenerationMeta meta = readMeta(generationId);
+        if (Objects.isNull(meta)) {
+            return;
+        }
+
+        if (!CollectionUtils.isEmpty(referenceMappings)) {
+            updateReferenceMappings(generationId, referenceMappings);
+        } else {
+            touch(generationId);
+        }
+
+        String now = LocalDateTime.now().toString();
+        GenerationMeta updated = new GenerationMeta(meta.getGenerationId(), meta.getUserId(), meta.getConversationId(),
+            meta.getQuestion(), status, meta.getCreatedAt(), now, errorMessage);
+
+        writeMeta(updated);
+
+        clearActiveGeneration(meta.getUserId(), generationId);
+    }
+
+    /**
+     * 清除用户的活动任务标记：仅当 active key 仍指向本任务时才删除， 避免误删用户已开启的新任务
+     *
+     * @param userId
+     *            用户 ID
+     * @param generationId
+     *            生成任务 ID
+     */
+    private void clearActiveGeneration(String userId, String generationId) {
+        String current = redisTemplate.opsForValue().get(activeGenerationKey(userId));
+        if (generationId.equals(current)) {
+            redisTemplate.delete(activeGenerationKey(userId));
+        }
+    }
+
+    /**
+     * 保存（或清空）任务的引用映射并刷新任务活跃度； 保存失败只记日志，不中断生成主流程
+     *
+     * @param generationId
+     *            生成任务 ID
+     * @param referenceMappings
+     *            引用映射；为空时删除对应 key
+     */
+    public void updateReferenceMappings(String generationId, Map<String, Map<String, Object>> referenceMappings) {
+        try {
+            if (referenceMappings == null || referenceMappings.isEmpty()) {
+                redisTemplate.delete(referenceKey(generationId));
+            } else {
+                redisTemplate.opsForValue().set(referenceKey(generationId),
+                    objectMapper.writeValueAsString(referenceMappings), GENERATION_TTL);
+            }
+
+            touch(generationId);
+        } catch (Exception e) {
+            log.warn("保存生成态引用映射失败: generationId={}", generationId, e);
+        }
+    }
+
+    /**
+     * 刷新任务活跃度：更新元数据的 updatedAt，续期内容与引用映射 key， 并刷新用户活动任务标记的 TTL
+     *
+     * @param generationId
+     *            生成任务 ID
+     */
+    private void touch(String generationId) {
+        GenerationMeta meta = readMeta(generationId);
+        if (Objects.isNull(meta)) {
+            return;
+        }
+
+        GenerationMeta updated =
+            new GenerationMeta(meta.getGenerationId(), meta.getUserId(), meta.getConversationId(), meta.getQuestion(),
+                meta.getStatus(), meta.getCreatedAt(), LocalDateTime.now().toString(), meta.getErrorMessage());
+
+        writeMeta(updated);
+
+        redisTemplate.expire(contentKey(generationId), GENERATION_TTL);
+
+        redisTemplate.expire(referenceKey(generationId), GENERATION_TTL);
+
+        redisTemplate.opsForValue().set(activeGenerationKey(meta.getUserId()), generationId, GENERATION_TTL);
+    }
+
+    /**
+     * 将任务元数据写入 Redis（带 TTL），序列化失败时抛出 IllegalStateException
+     *
+     * @param meta
+     *            任务元数据
+     */
+    private void writeMeta(GenerationMeta meta) {
+        try {
+            redisTemplate.opsForValue().set(metaKey(meta.getGenerationId()), objectMapper.writeValueAsString(meta),
+                GENERATION_TTL);
+        } catch (Exception e) {
+            throw new IllegalStateException("保存生成态元数据失败", e);
+        }
+    }
+
+    /**
+     * 创建一个新的生成任务（状态 STREAMING）：初始化内容与元数据并发布用户活动任务标记
+     *
+     * @param userId
+     *            用户 ID
+     * @param conversationId
+     *            会话 ID
+     * @param question
+     *            用户消息原文
+     * @return 新任务的快照（初始内容为空）
+     */
+    public GenerationSnapshot createGeneration(String userId, String conversationId, String question) {
+        String generationId = UUID.randomUUID().toString();
+        String now = LocalDateTime.now().toString();
+        GenerationMeta meta = new GenerationMeta(generationId, userId, conversationId, question,
+            GenerationStatus.STREAMING, now, now, null);
+
+        // 写入顺序：先把可读子项准备好，最后再发布 active key，避免读取者拿到 active key 后却查不到 meta/content。
+        redisTemplate.delete(referenceKey(generationId));
+        redisTemplate.opsForValue().set(contentKey(generationId), "", GENERATION_TTL);
+        writeMeta(meta);
+        redisTemplate.opsForValue().set(activeGenerationKey(userId), generationId, GENERATION_TTL);
+
+        return toSnapshot(meta, "", Collections.emptyMap());
+    }
+
+    /**
+     * 向任务内容追加一个流式文本块并刷新活跃度； 空块只刷新活跃度（维持 30 分钟 TTL），不追加内容
+     *
+     * @param generationId
+     *            生成任务 ID
+     * @param chunk
+     *            文本块
+     */
+    public void appendChunk(String generationId, String chunk) {
+        if (StringUtils.isBlank(chunk)) {
+            touch(generationId);
+
+            return;
+        }
+
+        redisTemplate.opsForValue().append(contentKey(generationId), chunk);
+        touch(generationId);
+    }
+
+    /**
+     * 将任务标记为失败并记录错误信息
+     *
+     * @param generationId
+     *            生成任务 ID
+     * @param errorMessage
+     *            错误信息
+     */
+    public void markFailed(String generationId, String errorMessage) {
+        updateTerminalState(generationId, GenerationStatus.FAILED, errorMessage, null);
+    }
+
+    /**
+     * 将任务标记为完成并保存引用映射
+     *
+     * @param generationId
+     *            生成任务 ID
+     * @param referenceMappings
+     *            引用映射（可为 null，表示无引用）
+     */
+    public void markCompleted(String generationId, Map<String, Map<String, Object>> referenceMappings) {
+        updateTerminalState(generationId, GenerationStatus.COMPLETED, null, referenceMappings);
     }
 }

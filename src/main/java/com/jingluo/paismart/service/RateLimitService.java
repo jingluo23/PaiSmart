@@ -12,6 +12,7 @@ import com.jingluo.paismart.config.RateLimitProperties;
 import com.jingluo.paismart.domain.response.DualWindowLimitView;
 import com.jingluo.paismart.domain.response.TokenBudgetView;
 import com.jingluo.paismart.domain.response.TokenReservationBundle;
+import com.jingluo.paismart.domain.response.WindowLimitView;
 import com.jingluo.paismart.exception.RateLimitExceededException;
 
 /**
@@ -140,5 +141,36 @@ public class RateLimitService {
         return usageQuotaService.reserveEmbeddingTokensWithGlobalBudget(userId, texts, "embedding-upload",
             "Embedding上传全网分钟Token预算已达上限", "Embedding上传全网当日Token预算已达上限", limit.getMinuteMax(),
             limit.getMinuteWindowSeconds(), limit.getDayMax(), limit.getDayWindowSeconds());
+    }
+
+    /**
+     * 校验用户聊天消息频率是否超限（按可配置的单窗口计数）， 并在通过后记录一次聊天请求用量
+     *
+     * @param userId
+     *            用户 ID
+     */
+    public void checkChatByUser(String userId) {
+        WindowLimitView limit = rateLimitConfigService.getCurrentSettings().getChatMessage();
+
+        checkSingleWindow("chat:user:" + userId, limit.getMax(), limit.getWindowSeconds(), "聊天请求过于频繁");
+
+        usageQuotaService.recordChatRequest(userId);
+    }
+
+    /**
+     * 为一次 LLM 调用预留用量：按用户当日配额与全局分钟/当日 Token 预算预留， 预算参数取自动态限流配置
+     *
+     * @param userId
+     *            请求者标识
+     * @param estimatedPromptTokens
+     *            估算的 prompt token 数
+     * @param maxCompletionTokens
+     *            completion token 上限
+     * @return 打包后的 Token 预留集合，超限时抛出限流异常
+     */
+    public TokenReservationBundle reserveLlmUsage(String userId, int estimatedPromptTokens, int maxCompletionTokens) {
+        TokenBudgetView limit = rateLimitConfigService.getCurrentSettings().getLlmGlobalToken();
+        return usageQuotaService.reserveLlmTokensWithGlobalBudget(userId, estimatedPromptTokens, maxCompletionTokens,
+            limit.getMinuteMax(), limit.getMinuteWindowSeconds(), limit.getDayMax(), limit.getDayWindowSeconds());
     }
 }

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import com.jingluo.paismart.client.DeepSeekClient;
+import com.jingluo.paismart.domain.response.AgentTool;
 import com.jingluo.paismart.domain.response.ToolExecutionResult;
 import com.jingluo.paismart.entity.SearchResult;
 import com.jingluo.paismart.handler.ToolHandler;
@@ -77,10 +78,110 @@ public class AgentToolRegistry {
      */
     private final Map<String, ToolHandler> handlers;
 
-    public AgentToolRegistry(Map<String, ToolHandler> handlers) {
+    /**
+     * 注册给大模型的工具定义列表（含名称、描述、参数 Schema），按构造时顺序固定
+     */
+    private final List<AgentTool> tools;
+
+    /**
+     * 构建工具注册表：绑定工具名到执行方法，并生成下发给模型的工具定义
+     */
+    public AgentToolRegistry() {
         this.handlers =
             Map.of("search_knowledge", this::executeSearchKnowledge, "generate_summary", this::executeGenerateSummary,
                 "submit_feedback", this::executeSubmitFeedback, "knowledge_stats", this::executeKnowledgeStats);
+        this.tools = List.of(searchKnowledgeTool(), generateSummaryTool(), submitFeedbackTool(), knowledgeStatsTool());
+    }
+
+    /**
+     * knowledge_stats 工具定义：只读统计类工具，无入参
+     */
+    private AgentTool knowledgeStatsTool() {
+        return new AgentTool("knowledge_stats",
+            "返回当前知识库的统计信息，包括 MySQL 文档总数、Elasticsearch 片段总数、索引存储量和最近更新时间。仅当用户询问知识库规模、文档数量、片段数量、更新时间或索引状态时调用。",
+            objectSchema(Collections.emptyMap(), Collections.emptyList()));
+    }
+
+    /**
+     * submit_feedback 工具定义：rating 为 good/bad 枚举必填项，reason 可选
+     */
+    private AgentTool submitFeedbackTool() {
+        Map<String, Object> ratingSchema = stringSchema("用户对当前回答的评价，只能是 good 或 bad。");
+        ratingSchema.put("enum", List.of("good", "bad"));
+
+        return new AgentTool("submit_feedback", "当用户明确表达对回答满意、不满意、点赞、点踩、纠错或要求记录反馈时调用，用于记录反馈以优化后续回答质量；不要在没有明确评价意图时推断调用。",
+            objectSchema(Map.of("rating", ratingSchema, "reason", stringSchema("用户给出的满意或不满意原因，可为空。")),
+                List.of("rating")));
+    }
+
+    /**
+     * generate_summary 工具定义：内部会二次调用大模型流式生成摘要，外层 ReAct 只接收结果
+     */
+    private AgentTool generateSummaryTool() {
+        return new AgentTool("generate_summary",
+            "对指定主题的知识库文档生成结构化摘要。适合用户要求整理、总结、归纳、提炼知识库内容时调用；本工具内部会二次调用大模型完成摘要，外层 ReAct 循环只应接收结果，不要把内部摘要过程当作新的工具计划。",
+            objectSchema(
+                Map.of("topic", stringSchema("需要从知识库中整理和总结的主题。"), "maxDocs", integerSchema("用于生成摘要的最多相关片段数量，默认 5。")),
+                List.of("topic")));
+    }
+
+    /**
+     * search_knowledge 工具定义：描述中约束了调用时机与 query 构造规则（保留原话核心实体，禁止泛化改写）
+     */
+    private AgentTool searchKnowledgeTool() {
+        return new AgentTool("search_knowledge",
+            "在知识库中搜索与用户问题相关的文档片段。当用户问题的答案可能依赖已上传资料、企业/项目/产品/系统内部信息、专有名词、事实依据、定义、功能、使用方式、实现细节、背景、流程或引用来源时应调用；即使用户没有明确说“查询知识库”，只要问题不像纯通用常识也应先检索。普通问候、闲聊、纯创作、翻译、通用代码/常识问题，或用户明确要求不要查知识库时不要调用。",
+            objectSchema(Map.of("query", stringSchema("用于知识库检索的查询语句。应保留用户原话中的核心实体、缩写和限定词，可包含原始问句和必要的等价改写；不要替换成固定关键词。"),
+                "topK", integerSchema("返回的片段数量，默认 5。")), List.of("query")));
+    }
+
+    /**
+     * 构造 integer 类型的参数 Schema 片段
+     *
+     * @param description
+     *            参数说明（引导大模型传参）
+     * @return Schema Map
+     */
+    private Map<String, Object> integerSchema(String description) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "integer");
+        schema.put("description", description);
+
+        return schema;
+    }
+
+    /**
+     * 构造 string 类型的参数 Schema 片段
+     *
+     * @param description
+     *            参数说明（引导大模型传参）
+     * @return Schema Map
+     */
+    private Map<String, Object> stringSchema(String description) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "string");
+        schema.put("description", description);
+
+        return schema;
+    }
+
+    /**
+     * 构造 object 类型的参数 Schema 根节点：禁用额外属性，强制模型按已声明字段传参
+     *
+     * @param properties
+     *            参数字段 -> 字段 Schema
+     * @param required
+     *            必填字段名列表
+     * @return Schema Map
+     */
+    private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", required);
+        schema.put("additionalProperties", false);
+
+        return schema;
     }
 
     /**
@@ -402,5 +503,14 @@ public class AgentToolRegistry {
 
         return handler.execute(CollectionUtils.isEmpty(arguments) ? Collections.emptyMap() : arguments, userId,
             onChunk);
+    }
+
+    /**
+     * 获取下发给大模型的全部工具定义
+     *
+     * @return 工具定义列表（不可变）
+     */
+    public List<AgentTool> getTools() {
+        return tools;
     }
 }

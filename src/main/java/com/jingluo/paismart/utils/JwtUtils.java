@@ -12,6 +12,7 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.WebSocketSession;
 
 import com.jingluo.paismart.model.User;
 import com.jingluo.paismart.repository.UserRepository;
@@ -580,5 +581,47 @@ public class JwtUtils {
 
             return null;
         }
+    }
+
+    /**
+     * 从 WebSocket 握手 URL 路径中提取 JWT Token
+     * <p>
+     * 约定 Token 为路径最后一段（如 /ws/chat/{token}）。
+     *
+     * @param session
+     *            WebSocket 会话
+     * @return JWT Token
+     * @throws IllegalArgumentException
+     *             会话 URI 或路径缺失时抛出
+     */
+    public String extractToken(WebSocketSession session) {
+        if (session.getUri() == null || session.getUri().getPath() == null) {
+            throw new IllegalArgumentException("WebSocket URI is missing");
+        }
+
+        String path = session.getUri().getPath();
+        String[] segments = path.split("/");
+
+        return segments[segments.length - 1];
+    }
+
+    /**
+     * 从 JWT 令牌中提取用户 ID，失败时抛出异常
+     * <p>
+     * 与 {@link #extractUserIdFromToken(String)} 的差异：本方法不忽略异常， 用于 WebSocket 建连等必须确知身份的场景。
+     *
+     * @param jwtToken
+     *            JWT Token
+     * @return 用户 ID
+     * @throws IllegalArgumentException
+     *             令牌中无有效用户 ID 时抛出
+     */
+    public String extractUserId(String jwtToken) {
+        String userId = extractUserIdFromToken(jwtToken);
+        if (StringUtils.isBlank(userId)) {
+            throw new IllegalArgumentException("无法从JWT令牌中提取用户ID");
+        }
+
+        return userId;
     }
 }

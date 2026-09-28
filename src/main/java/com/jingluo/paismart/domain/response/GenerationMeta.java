@@ -1,6 +1,7 @@
 package com.jingluo.paismart.domain.response;
 
 import com.jingluo.paismart.enums.GenerationStatus;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 
 /**
@@ -9,6 +10,7 @@ import lombok.Data;
  * @Author: 鲸落
  * @Date: 2026/9/20 16:47
  */
+@AllArgsConstructor
 @Data
 public class GenerationMeta {
 

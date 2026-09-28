@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -350,5 +351,142 @@ public class ConversationService {
         session.setStatus(SessionStatusEnum.ACTIVE);
 
         conversationSessionRepository.save(session);
+    }
+
+    /**
+     * 确保逻辑会话存在：不存在时按用户与首条消息标题创建（标题为空则以"新对话"占位）， 已存在时直接返回
+     *
+     * @param userId
+     *            用户 ID
+     * @param conversationId
+     *            逻辑会话ID
+     * @param title
+     *            首条消息文本，用作会话标题
+     */
+    public void ensureConversationSession(Long userId, String conversationId, String title) {
+        if (conversationSessionRepository.existsByConversationId(conversationId)) {
+            return;
+        }
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException("User not found", HttpStatus.NOT_FOUND));
+
+        ConversationSession session = new ConversationSession();
+        session.setUser(user);
+        session.setConversationId(conversationId);
+        session.setTitle(title != null && !title.isBlank() ? title : "新对话");
+        session.setStatus(SessionStatusEnum.ACTIVE);
+
+        conversationSessionRepository.save(session);
+    }
+
+    /**
+     * 在同一事务内完成一次问答的持久化：写入消息记录、 更新默认标题（仅当会话还是"新对话"时以首条消息代替）并刷新会话更新时间
+     *
+     * @param userId
+     *            用户 ID
+     * @param question
+     *            用户问题
+     * @param answer
+     *            助手回答
+     * @param conversationId
+     *            逻辑会话ID
+     * @param referenceMappings
+     *            引用编号映射（可为空，为空时不保存引用详情）
+     */
+    @Transactional
+    public void recordConversation(Long userId, String question, String answer, String conversationId,
+        Map<String, Map<String, Object>> referenceMappings) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException("User not found", HttpStatus.NOT_FOUND));
+
+        saveConversation(user, question, answer, conversationId, referenceMappings);
+
+        updateSessionTitleIfDefault(conversationId, question);
+
+        touchSessionUpdatedAt(conversationId);
+    }
+
+    /**
+     * 刷新会话的更新时间为当前时间（会话不存在时忽略）
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     */
+    private void touchSessionUpdatedAt(String conversationId) {
+        conversationSessionRepository.findByConversationId(conversationId).ifPresent(session -> {
+            session.setUpdatedAt(LocalDateTime.now());
+            conversationSessionRepository.save(session);
+        });
+    }
+
+    /**
+     * 仅当会话标题仍为默认占位"新对话"时，以给定标题（超长截断至 50 字符）替换
+     *
+     * @param conversationId
+     *            逻辑会话ID
+     * @param title
+     *            待写入的标题
+     */
+    public void updateSessionTitleIfDefault(String conversationId, String title) {
+        if (StringUtils.isBlank(title)) {
+            return;
+        }
+
+        String trimmed = title.length() > 50 ? title.substring(0, 50) : title;
+
+        conversationSessionRepository.findByConversationId(conversationId).ifPresent(session -> {
+            if ("新对话".equals(session.getTitle())) {
+                session.setTitle(trimmed);
+                conversationSessionRepository.save(session);
+            }
+        });
+    }
+
+    /**
+     * 写入一条问答消息记录，引用映射序列化为 JSON 随记录落库
+     *
+     * @param user
+     *            用户
+     * @param question
+     *            用户问题
+     * @param answer
+     *            助手回答
+     * @param conversationId
+     *            逻辑会话ID
+     * @param referenceMappings
+     *            引用编号映射（可为空）
+     */
+    private void saveConversation(User user, String question, String answer, String conversationId,
+        Map<String, Map<String, Object>> referenceMappings) {
+        Conversation conversation = new Conversation();
+        conversation.setUser(user);
+        conversation.setQuestion(question);
+        conversation.setAnswer(answer);
+        conversation.setConversationId(conversationId);
+        conversation.setReferenceMappingsJson(writeReferenceMappings(referenceMappings));
+
+        conversationRepository.save(conversation);
+    }
+
+    /**
+     * 序列化引用映射为 JSON 文本；为空返回 null，序列化失败记日志并返回 null（仅跳过引用详情，不阻断落库）
+     *
+     * @param referenceMappings
+     *            引用编号映射
+     * @return JSON 文本，可能为 null
+     */
+    private String writeReferenceMappings(Map<String, Map<String, Object>> referenceMappings) {
+        if (CollectionUtils.isEmpty(referenceMappings)) {
+            return null;
+        }
+
+        try {
+            return objectMapper.writeValueAsString(referenceMappings);
+        } catch (Exception e) {
+            log.warn("序列化引用映射失败，将跳过持久化引用详情", e);
+
+            return null;
+        }
     }
 }

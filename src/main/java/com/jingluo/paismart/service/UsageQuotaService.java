@@ -726,4 +726,75 @@ public class UsageQuotaService {
         return reserveDailyTokens("llm", userId, reserveTokens, properties.getLlm().getDayMaxTokens(),
             "LLM当日Token额度已达上限");
     }
+
+    /**
+     * 记录用户当日聊天请求次数（按天计数，当日结束时过期）； 用户不受配额管理时跳过
+     *
+     * @param userId
+     *            发起调用的用户 ID
+     */
+    public void recordChatRequest(String userId) {
+        if (!isQuotaManaged(userId)) {
+            return;
+        }
+
+        incrementMetricKey(buildMetricKey("chat", userId), 1, secondsUntilEndOfDay());
+    }
+
+    /**
+     * 对用量计数 key 原子自增并兜底设置过期时间，防止 key 永不过期
+     *
+     * @param metricKey
+     *            计量 key
+     * @param increment
+     *            自增量
+     * @param expiresInSeconds
+     *            建议过期秒数
+     */
+    private void incrementMetricKey(String metricKey, long increment, long expiresInSeconds) {
+        stringRedisTemplate.opsForValue().increment(metricKey, increment);
+        ensureExpiry(metricKey, retentionTtlSeconds());
+    }
+
+    /**
+     * 为一次 LLM 调用做三重预留：用户当日 Token 配额、全网分钟 Token 预算、 全网当日 Token 预算；任一级预留失败时回滚已完成的预留再抛出异常， 保证各级预算扣减的原子性
+     *
+     * @param userId
+     *            发起调用的用户 ID
+     * @param estimatedPromptTokens
+     *            估算的 prompt token 数
+     * @param maxCompletionTokens
+     *            completion token 上限
+     * @param minuteLimit
+     *            全网分钟 Token 预算上限
+     * @param minuteWindowSeconds
+     *            分钟窗口时长（秒）
+     * @param dayLimit
+     *            全网当日 Token 预算上限
+     * @param dayWindowSeconds
+     *            当日窗口时长（秒）
+     * @return 打包后的 Token 预留集合
+     */
+    public TokenReservationBundle reserveLlmTokensWithGlobalBudget(String userId, int estimatedPromptTokens,
+        int maxCompletionTokens, long minuteLimit, long minuteWindowSeconds, long dayLimit, long dayWindowSeconds) {
+        int reserveTokens = Math.max(estimatedPromptTokens, 0) + Math.max(maxCompletionTokens, 0);
+        reserveTokens = Math.max(reserveTokens, 1);
+
+        List<TokenReservation> reservations = new ArrayList<>(3);
+        try {
+            addIfActive(reservations, reserveLlmTokens(userId, estimatedPromptTokens, maxCompletionTokens));
+
+            addIfActive(reservations, reserveGlobalRollingTokens("llm", "minute", reserveTokens, minuteLimit,
+                minuteWindowSeconds, "LLM全网分钟Token预算已达上限"));
+
+            addIfActive(reservations, reserveGlobalRollingTokens("llm", "day", reserveTokens, dayLimit,
+                dayWindowSeconds, "LLM全网当日Token预算已达上限"));
+        } catch (RuntimeException exception) {
+            abortReservedTokens(reservations);
+
+            throw exception;
+        }
+
+        return TokenReservationBundle.of("llm", userId, reservations);
+    }
 }
