@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -12,7 +13,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Getter;
 
 /**
  * @Author: 鲸落
@@ -63,9 +66,24 @@ public class ReActStreamAccumulator {
     private String finishReason;
 
     /**
-     * 结算标记：usage 只允许结算一次，防止正常完成与取消路径重复结算
+     * 结算标记：usage 只允许结算一次；正常完成回调与取消/超时路径可能并发结算，需 CAS 抢占
      */
-    private boolean settled;
+    @Getter(AccessLevel.NONE)
+    private final AtomicBoolean settled = new AtomicBoolean(false);
+
+    /**
+     * CAS 抢占结算权：返回 true 表示本次调用获得结算资格，false 表示已被并发路径结算
+     */
+    public boolean markSettled() {
+        return settled.compareAndSet(false, true);
+    }
+
+    /**
+     * 是否已完成结算
+     */
+    public boolean isSettled() {
+        return settled.get();
+    }
 
     /**
      * 上游未上报 completion 用量时的兜底值，与 ReAct 回合的最大生成长度保持一致

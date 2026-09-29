@@ -131,9 +131,10 @@ declare namespace Api {
       primaryOrg: string;
       createdAt: string;
       usage: UsageSnapshot;
-      chatUsage?: string;
-      llmUsage?: string;
-      embeddingUsage?: string;
+      // 虚拟展示列的 key 标识（列数据实际取自 usage 快照），并非后端返回字段
+      chatUsage?: never;
+      llmUsage?: never;
+      embeddingUsage?: never;
     };
 
     type List = Common.PaginatingQueryRecord<Item>;

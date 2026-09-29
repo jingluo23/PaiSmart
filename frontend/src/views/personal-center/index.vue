@@ -280,6 +280,7 @@ const tokenRecordColumns = computed(() => [
             <NSpin :show="tokenRecordLoading">
               <NDataTable
                 v-if="tokenRecords.length > 0"
+                remote
                 :columns="tokenRecordColumns"
                 :data="tokenRecords"
                 :loading="tokenRecordLoading"

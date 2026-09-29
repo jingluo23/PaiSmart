@@ -25,5 +25,5 @@ logging:
     org.springframework.web: INFO
     org.springframework.boot.autoconfigure.web.servlet: INFO
     org.springframework.security: INFO
-    com.yizhaoqi.smartpai: INFO
+    com.jingluo.paismart: INFO
     io.minio: WARN

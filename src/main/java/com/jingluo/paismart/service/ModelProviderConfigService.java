@@ -286,7 +286,7 @@ public class ModelProviderConfigService {
             entity.setEnabled(item.getEnabled() == null ? fallback.isEnabled() : item.getEnabled());
             entity.setActive(provider.equals(request.getActiveProvider()));
             entity.setUpdatedBy(updatedBy);
-            entity.setApiKeyCiphertext(resolveCiphertext(item.getApiKey(), fallback));
+            entity.setApiKeyCiphertext(resolveCiphertext(item.getApiKey(), fallback, normalizedScope));
             modelProviderConfigRepository.save(entity);
             persistedMap.put(provider, entity);
         }
@@ -314,12 +314,14 @@ public class ModelProviderConfigService {
 
     /**
      * 解析密钥
-     * 
+     *
      * @param rawApiKey
      * @param fallback
+     * @param scope
+     *            当前更新的作用域；同一 provider 可同时存在于 llm/embedding 两个作用域，必须按调用方作用域精确匹配
      * @return
      */
-    private String resolveCiphertext(String rawApiKey, ProviderConfigView fallback) {
+    private String resolveCiphertext(String rawApiKey, ProviderConfigView fallback, String scope) {
         if (StringUtils.isNotBlank(rawApiKey)) {
             return secretCryptoService.encrypt(rawApiKey.trim());
         }
@@ -329,7 +331,7 @@ public class ModelProviderConfigService {
         }
 
         Optional<ModelProviderConfig> persisted = modelProviderConfigRepository
-            .findByConfigScopeAndProviderCode(resolveScopeByProvider(fallback.getProvider()), fallback.getProvider());
+            .findByConfigScopeAndProviderCode(scope, fallback.getProvider());
         return persisted.map(ModelProviderConfig::getApiKeyCiphertext).orElseGet(() -> {
             if ("deepseek".equals(fallback.getProvider())) {
                 return secretCryptoService.encrypt(deepSeekApiKey);
@@ -341,23 +343,6 @@ public class ModelProviderConfigService {
 
             return null;
         });
-    }
-
-    /**
-     * 根据 provider 解析作用域
-     *
-     * @param provider
-     * @return
-     */
-    private String resolveScopeByProvider(String provider) {
-        ModelProviderSettingsView currentSettings = getCurrentSettings();
-        ScopeSettingsView llmScope = currentSettings.getLlm();
-        if (llmScope.getProviders().stream().filter(Objects::nonNull)
-            .anyMatch(item -> item.getProvider().equals(provider))) {
-            return SCOPE_LLM;
-        }
-
-        return SCOPE_EMBEDDING;
     }
 
     /**
@@ -731,21 +716,23 @@ public class ModelProviderConfigService {
         ScopeSettingsView settings = resolveScope(scope, currentSettings);
 
         return settings.getProviders().stream().filter(ProviderConfigView::isActive).findFirst()
-            .map(this::toActiveProvider)
+            .map(item -> toActiveProvider(scope, item))
             .orElseThrow(() -> new CustomException("未找到激活的模型配置: " + scope, HttpStatus.INTERNAL_SERVER_ERROR));
     }
 
     /**
      * 将提供者配置视图转换为激活视图：密钥优先解密数据库持久化密文， 未持久化时回退到内置环境变量密钥，保证旧配置平滑过渡
      *
+     * @param scope
+     *            模型作用域（llm / embedding）；同一 provider 可同时存在于两个作用域，密钥需按作用域精确匹配
      * @param provider
      *            提供者配置视图
      * @return 携带可用密钥的激活提供者视图
      */
-    private ActiveProviderView toActiveProvider(ProviderConfigView provider) {
+    private ActiveProviderView toActiveProvider(String scope, ProviderConfigView provider) {
         String apiKey = null;
         Optional<ModelProviderConfig> persisted = modelProviderConfigRepository
-            .findByConfigScopeAndProviderCode(resolveScopeByProvider(provider.getProvider()), provider.getProvider());
+            .findByConfigScopeAndProviderCode(scope, provider.getProvider());
         if (persisted.isPresent()) {
             apiKey = secretCryptoService.decrypt(persisted.get().getApiKeyCiphertext());
         } else if ("deepseek".equals(provider.getProvider())) {

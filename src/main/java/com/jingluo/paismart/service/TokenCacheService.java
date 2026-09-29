@@ -89,9 +89,9 @@ public class TokenCacheService {
             tokenInfo.put("username", username);
             tokenInfo.put("expireTime", expireTimeMs);
 
-            // 计算Redis过期时间（比JWT过期时间稍长一点）
-            // 多5分钟缓冲
-            long ttlSeconds = (expireTimeMs - System.currentTimeMillis()) / 1000 + 300;
+            // 计算Redis过期时间：缓冲 12 分钟，需覆盖 JwtUtils 的过期刷新宽限期（10 分钟），
+            // 保证宽限期内 refreshToken 能通过缓存有效性检查识别出已登出/被拉黑的令牌
+            long ttlSeconds = (expireTimeMs - System.currentTimeMillis()) / 1000 + 720;
 
             redisTemplate.opsForValue().set(key, tokenInfo, ttlSeconds, TimeUnit.SECONDS);
 

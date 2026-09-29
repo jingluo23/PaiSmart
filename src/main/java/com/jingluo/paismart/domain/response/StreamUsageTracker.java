@@ -1,6 +1,10 @@
 package com.jingluo.paismart.domain.response;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Getter;
 
 /**
  * 流式响应的 token 用量追踪器
@@ -40,12 +44,27 @@ public class StreamUsageTracker {
     private volatile int completionTokens;
 
     /**
-     * 是否已完成结算，防止重复结算
+     * 结算标记：usage 只允许结算一次；chunk 回调与超时/取消路径可能并发结算，需 CAS 抢占
      */
-    private volatile boolean settled;
+    @Getter(AccessLevel.NONE)
+    private final AtomicBoolean settled = new AtomicBoolean(false);
 
     public StreamUsageTracker(TokenReservation reservation, int estimatedPromptTokens) {
         this.reservation = reservation;
         this.estimatedPromptTokens = estimatedPromptTokens;
+    }
+
+    /**
+     * CAS 抢占结算权：返回 true 表示本次调用获得结算资格，false 表示已被并发路径结算
+     */
+    public boolean markSettled() {
+        return settled.compareAndSet(false, true);
+    }
+
+    /**
+     * 是否已完成结算
+     */
+    public boolean isSettled() {
+        return settled.get();
     }
 }

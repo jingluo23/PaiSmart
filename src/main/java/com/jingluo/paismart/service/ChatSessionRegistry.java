@@ -37,7 +37,15 @@ public class ChatSessionRegistry {
      *            WebSocket 会话
      */
     public void registerSession(String userId, WebSocketSession session) {
-        sessions.put(userId, session);
+        WebSocketSession old = sessions.put(userId, session);
+        if (Objects.nonNull(old) && old != session && old.isOpen()) {
+            try {
+                // 顶替登录后主动关闭旧会话，避免僵尸连接持续占用
+                old.close();
+            } catch (Exception e) {
+                log.warn("关闭用户 {} 的旧 WebSocket 会话失败: {}", userId, e.getMessage());
+            }
+        }
     }
 
     /**

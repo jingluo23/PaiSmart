@@ -354,7 +354,7 @@ public class JwtUtils {
 
             return Objects.nonNull(claims) ? claims.get("userId", String.class) : null;
         } catch (Exception e) {
-            log.error("从令牌中提取用户ID时出错: {}", token, e);
+            log.error("从令牌中提取用户ID时出错", e);
 
             return null;
         }
@@ -445,7 +445,7 @@ public class JwtUtils {
 
             return Objects.nonNull(claims) ? claims.get("orgTags", String.class) : null;
         } catch (Exception e) {
-            log.warn("从令牌中提取组织标签时出错: {}", token, e);
+            log.warn("从令牌中提取组织标签时出错", e);
 
             return null;
         }
@@ -528,6 +528,14 @@ public class JwtUtils {
                 return null;
             }
 
+            // 已登出或被强制下线的令牌在缓存中已失效，不允许通过刷新通道换取新令牌
+            String tokenId = claims.get("tokenId", String.class);
+            if (StringUtils.isBlank(tokenId) || !tokenCacheService.isTokenValid(tokenId)) {
+                log.warn("令牌已在缓存中失效，拒绝刷新，用户: {}", username);
+
+                return null;
+            }
+
             // 重新生成token
 
             return generateToken(username);
@@ -577,7 +585,7 @@ public class JwtUtils {
 
             return Objects.nonNull(claims) ? claims.get("role", String.class) : null;
         } catch (Exception e) {
-            log.warn("从令牌中提取角色时出错: {}", token, e);
+            log.warn("从令牌中提取角色时出错", e);
 
             return null;
         }

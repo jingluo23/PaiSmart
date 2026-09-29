@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,6 +36,7 @@ import com.jingluo.paismart.domain.request.RechargePackageRequest;
 import com.jingluo.paismart.domain.request.UpdateInviteCodeRequest;
 import com.jingluo.paismart.domain.request.UpdateScopeRequest;
 import com.jingluo.paismart.domain.response.MigrationReport;
+import com.jingluo.paismart.domain.response.RateLimitSettingsView;
 import com.jingluo.paismart.domain.response.ResponseResult;
 import com.jingluo.paismart.enums.Role;
 import com.jingluo.paismart.exception.CustomException;
@@ -65,6 +67,18 @@ import io.micrometer.common.util.StringUtils;
 @RestController
 @RequestMapping("/api/v1/admin")
 public class AdminController {
+
+    /**
+     * MinIO 迁移高危操作的二次确认密钥，未配置时对应接口直接拒绝
+     */
+    @Value("${admin.migrate-minio-key:}")
+    private String migrateMinioKey;
+
+    /**
+     * 清空全部数据高危操作的二次确认密钥，未配置时对应接口直接拒绝
+     */
+    @Value("${admin.clear-all-data-key:}")
+    private String clearAllDataKey;
 
     @Autowired
     private JwtUtils jwtUtils;
@@ -269,6 +283,25 @@ public class AdminController {
         validateAdmin(adminUsername);
 
         return ResponseResult.success(rateLimitConfigService.getCurrentSettings());
+    }
+
+    /**
+     * 更新限流配置：覆盖持久化配置项，限流执行侧动态读取，保存后立即生效
+     *
+     * @param token
+     *            管理员登录令牌
+     * @param request
+     *            限流配置完整设置
+     * @return 保存后的最新设置
+     */
+    @PutMapping("/rate-limits")
+    public ResponseResult<?> updateRateLimits(@RequestHeader("Authorization") String token,
+        @RequestBody RateLimitSettingsView request) {
+        String adminUsername = jwtUtils.extractUsernameFromToken(token.replace("Bearer ", ""));
+
+        validateAdmin(adminUsername);
+
+        return ResponseResult.success(rateLimitConfigService.updateSettings(request, adminUsername));
     }
 
     /**
@@ -836,8 +869,8 @@ public class AdminController {
 
         validateAdmin(adminUsername);
 
-        // 简单密钥验证
-        if (!"migration2024".equals(adminKey)) {
+        // 密钥验证：未配置密钥时直接拒绝，避免使用仓库内的默认密钥
+        if (StringUtils.isBlank(migrateMinioKey) || !Objects.equals(migrateMinioKey, adminKey)) {
             return ResponseResult.fail(HttpStatus.FORBIDDEN.value(), "无效的管理员密钥");
         }
 
@@ -861,8 +894,8 @@ public class AdminController {
 
         validateAdmin(adminUsername);
 
-        // 更严格的密钥验证
-        if (!"CLEAR_ALL_2024".equals(adminKey)) {
+        // 密钥验证：未配置密钥时直接拒绝，避免使用仓库内的默认密钥
+        if (StringUtils.isBlank(clearAllDataKey) || !Objects.equals(clearAllDataKey, adminKey)) {
             return ResponseResult.fail(HttpStatus.FORBIDDEN.value(), "无效的管理员密钥");
         }
 

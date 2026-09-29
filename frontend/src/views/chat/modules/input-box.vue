@@ -66,7 +66,7 @@ const cooldownText = computed(() => {
   if (!isRateLimited.value) {
     return '';
   }
-  return `${rateLimitRemainingSeconds} 秒后可重新发送`;
+  return `${rateLimitRemainingSeconds.value} 秒后可重新发送`;
 });
 
 function findAssistantMessage(generationId?: string) {

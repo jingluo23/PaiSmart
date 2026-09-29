@@ -98,16 +98,26 @@ rate-limit:
   chat-message:
     max: ${RATE_LIMIT_CHAT_MESSAGE_MAX:30}
     window-seconds: ${RATE_LIMIT_CHAT_MESSAGE_WINDOW_SECONDS:60}
-  llm-request:
-    minute-max: ${RATE_LIMIT_LLM_MINUTE_MAX:20}
+  llm-global-token:
+    minute-max: ${RATE_LIMIT_LLM_MINUTE_MAX:120000}
     minute-window-seconds: ${RATE_LIMIT_LLM_MINUTE_WINDOW_SECONDS:60}
-    day-max: ${RATE_LIMIT_LLM_DAY_MAX:500}
+    day-max: ${RATE_LIMIT_LLM_DAY_MAX:8000000}
     day-window-seconds: ${RATE_LIMIT_LLM_DAY_WINDOW_SECONDS:86400}
-  embedding-batch:
-    minute-max: ${RATE_LIMIT_EMBEDDING_MINUTE_MAX:60}
-    minute-window-seconds: ${RATE_LIMIT_EMBEDDING_MINUTE_WINDOW_SECONDS:60}
-    day-max: ${RATE_LIMIT_EMBEDDING_DAY_MAX:2000}
-    day-window-seconds: ${RATE_LIMIT_EMBEDDING_DAY_WINDOW_SECONDS:86400}
+  embedding-upload-token:
+    minute-max: ${RATE_LIMIT_EMBEDDING_UPLOAD_MINUTE_MAX:200000}
+    minute-window-seconds: ${RATE_LIMIT_EMBEDDING_UPLOAD_MINUTE_WINDOW_SECONDS:60}
+    day-max: ${RATE_LIMIT_EMBEDDING_UPLOAD_DAY_MAX:20000000}
+    day-window-seconds: ${RATE_LIMIT_EMBEDDING_UPLOAD_DAY_WINDOW_SECONDS:86400}
+  embedding-query-request:
+    minute-max: ${RATE_LIMIT_EMBEDDING_QUERY_MINUTE_MAX:60}
+    minute-window-seconds: ${RATE_LIMIT_EMBEDDING_QUERY_MINUTE_WINDOW_SECONDS:60}
+    day-max: ${RATE_LIMIT_EMBEDDING_QUERY_DAY_MAX:5000}
+    day-window-seconds: ${RATE_LIMIT_EMBEDDING_QUERY_DAY_WINDOW_SECONDS:86400}
+  embedding-query-global-token:
+    minute-max: ${RATE_LIMIT_EMBEDDING_QUERY_TOKEN_MINUTE_MAX:60000}
+    minute-window-seconds: ${RATE_LIMIT_EMBEDDING_QUERY_TOKEN_MINUTE_WINDOW_SECONDS:60}
+    day-max: ${RATE_LIMIT_EMBEDDING_QUERY_TOKEN_DAY_MAX:4000000}
+    day-window-seconds: ${RATE_LIMIT_EMBEDDING_QUERY_TOKEN_DAY_WINDOW_SECONDS:86400}
 
 file:
   parsing:
@@ -160,7 +170,7 @@ logging:
     org.springframework.web: ${LOG_LEVEL_WEB:DEBUG}
     org.springframework.boot.autoconfigure.web.servlet: ${LOG_LEVEL_AUTOCONFIG:DEBUG}
     org.springframework.security: ${LOG_LEVEL_SECURITY:DEBUG}
-    com.yizhaoqi.smartpai: ${LOG_LEVEL_APP:DEBUG}
+    com.jingluo.paismart: ${LOG_LEVEL_APP:DEBUG}
     io.minio: ${LOG_LEVEL_MINIO:DEBUG}
 
 deepseek:

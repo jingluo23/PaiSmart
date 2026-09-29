@@ -236,11 +236,10 @@ public class DeepSeekClient {
      * @param usageTracker 用量追踪器
      */
     private void settleUsage(StreamUsageTracker usageTracker) {
-        if (Objects.isNull(usageTracker) || usageTracker.isSettled()) {
+        if (Objects.isNull(usageTracker) || !usageTracker.markSettled()) {
             return;
         }
 
-        usageTracker.setSettled(true);
         int actualPromptTokens = usageTracker.getPromptTokens() > 0 ? usageTracker.getPromptTokens()
             : usageTracker.getEstimatedPromptTokens();
         int actualCompletionTokens = usageTracker.getCompletionTokens() > 0 ? usageTracker.getCompletionTokens()

@@ -82,11 +82,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             }
-            // 继续执行过滤链
-            filterChain.doFilter(request, response);
         } catch (Exception e) {
-            // 记录错误日志
-            log.warn("无法设置用户身份验证: {}", e);
+            // 记录错误日志并清空认证上下文，请求继续以未认证身份走过滤链，由授权规则统一返回 401
+            log.warn("无法设置用户身份验证: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
         }
+        // 无论认证是否成功都继续执行过滤链，避免异常时请求被吞掉导致空响应
+        filterChain.doFilter(request, response);
     }
 }

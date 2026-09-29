@@ -938,7 +938,7 @@ public class UserService {
 
         // 如果缓存中没有，则从数据库获取
         if (CollectionUtils.isEmpty(orgTags)) {
-            orgTags = Arrays.asList(user.getOrgTags().split(","));
+            orgTags = StringUtils.isBlank(user.getOrgTags()) ? List.of() : Arrays.asList(user.getOrgTags().split(","));
             // 更新缓存
             orgTagCacheService.cacheUserOrgTags(username, orgTags);
         }
@@ -988,8 +988,9 @@ public class UserService {
         User user = userRepository.findByUsername(username)
             .orElseThrow(() -> new CustomException("未找到用户", HttpStatus.NOT_FOUND));
 
-        // 检查该组织标签是否已分配给用户
-        Set<String> userTags = Arrays.stream(user.getOrgTags().split(",")).collect(Collectors.toSet());
+        // 检查该组织标签是否已分配给用户（管理员等未分配标签的用户直接拒绝）
+        Set<String> userTags = StringUtils.isBlank(user.getOrgTags()) ? Set.of()
+            : Arrays.stream(user.getOrgTags().split(",")).collect(Collectors.toSet());
         if (!userTags.contains(primaryOrg)) {
             throw new CustomException("未向用户分配组织标签", HttpStatus.BAD_REQUEST);
         }
@@ -1028,7 +1029,7 @@ public class UserService {
 
             // 如果用户没有设置主组织标签，则尝试使用第一个分配的组织标签
             if (StringUtils.isBlank(primaryOrg)) {
-                String[] tags = user.getOrgTags().split(",");
+                String[] tags = StringUtils.isBlank(user.getOrgTags()) ? new String[0] : user.getOrgTags().split(",");
                 if (tags.length > 0) {
                     primaryOrg = tags[0];
                     // 更新用户的主组织标签

@@ -151,6 +151,13 @@ public class RechargeService {
         RechargeOrder order = rechargeOrderRepository.findByTradeNo(tradeNo)
             .orElseThrow(() -> new CustomException("订单不存在", HttpStatus.BAD_REQUEST));
 
+        // 幂等保护：订单已成功发放过 token，忽略微信重复回调
+        if (order.getStatus() == OrderStatus.SUCCEED) {
+            log.info("订单已处理成功，忽略重复支付回调: tradeNo={}", tradeNo);
+
+            return;
+        }
+
         // 3. 更新订单状态
         if (callbackBo.getPayStatus() == RechargeStatusEnum.SUCCEED) {
             order.setStatus(OrderStatus.SUCCEED);
@@ -206,6 +213,11 @@ public class RechargeService {
         if (bo.getPayStatus() == RechargeStatusEnum.SUCCEED) {
             RechargeOrder order = rechargeOrderRepository.findByTradeNo(tradeNo)
                 .orElseThrow(() -> new CustomException("订单不存在", HttpStatus.BAD_REQUEST));
+
+            // 幂等保护：订单已成功发放过 token，避免重复查询导致重复发放
+            if (order.getStatus() == OrderStatus.SUCCEED) {
+                return order;
+            }
 
             order.setStatus(OrderStatus.SUCCEED);
             order.setWxTransactionId(bo.getThirdTransactionId());

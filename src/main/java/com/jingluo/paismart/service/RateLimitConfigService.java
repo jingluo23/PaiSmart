@@ -4,9 +4,12 @@ import java.util.List;
 import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.jingluo.paismart.config.RateLimitProperties;
+import com.jingluo.paismart.exception.CustomException;
 import com.jingluo.paismart.domain.response.DualWindowLimitView;
 import com.jingluo.paismart.domain.response.RateLimitSettingsView;
 import com.jingluo.paismart.domain.response.TokenBudgetView;
@@ -49,6 +52,84 @@ public class RateLimitConfigService {
         RateLimitSettingsView rateLimitSettingsView = buildDefaultSettings();
 
         return mergeOverrides(rateLimitSettingsView, rateLimitConfigRepository.findAll());
+    }
+
+    /**
+     * 更新限流配置：覆盖 rate_limit_configs 表中的对应配置项； 限流执行侧每次检查都通过 getCurrentSettings 动态读取，保存后立即生效，无需重启
+     *
+     * @param request
+     *            五类限流配置的完整设置
+     * @param updatedBy
+     *            操作人（管理员用户名）
+     * @return 保存后的最新设置
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public RateLimitSettingsView updateSettings(RateLimitSettingsView request, String updatedBy) {
+        if (Objects.isNull(request) || Objects.isNull(request.getChatMessage()) || Objects.isNull(request.getLlmGlobalToken())
+            || Objects.isNull(request.getEmbeddingUploadToken()) || Objects.isNull(request.getEmbeddingQueryRequest())
+            || Objects.isNull(request.getEmbeddingQueryGlobalToken())) {
+            throw new CustomException("限流配置不完整", HttpStatus.BAD_REQUEST);
+        }
+
+        validatePositive(request.getChatMessage().getMax(), request.getChatMessage().getWindowSeconds());
+        validatePositive(request.getLlmGlobalToken().getMinuteMax(), request.getLlmGlobalToken().getMinuteWindowSeconds(),
+            request.getLlmGlobalToken().getDayMax(), request.getLlmGlobalToken().getDayWindowSeconds());
+        validatePositive(request.getEmbeddingUploadToken().getMinuteMax(),
+            request.getEmbeddingUploadToken().getMinuteWindowSeconds(), request.getEmbeddingUploadToken().getDayMax(),
+            request.getEmbeddingUploadToken().getDayWindowSeconds());
+        validatePositive(request.getEmbeddingQueryRequest().getMinuteMax(),
+            request.getEmbeddingQueryRequest().getMinuteWindowSeconds(), request.getEmbeddingQueryRequest().getDayMax(),
+            request.getEmbeddingQueryRequest().getDayWindowSeconds());
+        validatePositive(request.getEmbeddingQueryGlobalToken().getMinuteMax(),
+            request.getEmbeddingQueryGlobalToken().getMinuteWindowSeconds(), request.getEmbeddingQueryGlobalToken().getDayMax(),
+            request.getEmbeddingQueryGlobalToken().getDayWindowSeconds());
+
+        upsertChatMessage(request.getChatMessage(), updatedBy);
+        upsertTokenBudget(LLM_GLOBAL_TOKEN, request.getLlmGlobalToken(), updatedBy);
+        upsertTokenBudget(EMBEDDING_UPLOAD_TOKEN, request.getEmbeddingUploadToken(), updatedBy);
+        upsertTokenBudget(EMBEDDING_QUERY_REQUEST, new TokenBudgetView(request.getEmbeddingQueryRequest().getMinuteMax(),
+            request.getEmbeddingQueryRequest().getMinuteWindowSeconds(), request.getEmbeddingQueryRequest().getDayMax(),
+            request.getEmbeddingQueryRequest().getDayWindowSeconds()), updatedBy);
+        upsertTokenBudget(EMBEDDING_QUERY_GLOBAL_TOKEN, request.getEmbeddingQueryGlobalToken(), updatedBy);
+
+        return getCurrentSettings();
+    }
+
+    /**
+     * 参数校验：所有限流值必须为正数
+     */
+    private void validatePositive(long... values) {
+        for (long value : values) {
+            if (value <= 0) {
+                throw new CustomException("限流配置值必须为正数", HttpStatus.BAD_REQUEST);
+            }
+        }
+    }
+
+    /**
+     * 保存聊天消息单窗口限制
+     */
+    private void upsertChatMessage(WindowLimitView limit, String updatedBy) {
+        RateLimitConfig config = rateLimitConfigRepository.findById(CHAT_MESSAGE).orElseGet(RateLimitConfig::new);
+        config.setConfigKey(CHAT_MESSAGE);
+        config.setSingleMax(limit.getMax());
+        config.setSingleWindowSeconds(limit.getWindowSeconds());
+        config.setUpdatedBy(updatedBy);
+        rateLimitConfigRepository.save(config);
+    }
+
+    /**
+     * 保存 Token 预算类限制（双窗口），DualWindowLimitView 与 TokenBudgetView 字段同构
+     */
+    private void upsertTokenBudget(String key, TokenBudgetView limit, String updatedBy) {
+        RateLimitConfig config = rateLimitConfigRepository.findById(key).orElseGet(RateLimitConfig::new);
+        config.setConfigKey(key);
+        config.setMinuteMax(limit.getMinuteMax());
+        config.setMinuteWindowSeconds(limit.getMinuteWindowSeconds());
+        config.setDayMax(limit.getDayMax());
+        config.setDayWindowSeconds(limit.getDayWindowSeconds());
+        config.setUpdatedBy(updatedBy);
+        rateLimitConfigRepository.save(config);
     }
 
     /**

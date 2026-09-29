@@ -60,6 +60,8 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/test/**").permitAll()
                     // LiteParse OCR 回调接口：可通过 aliyun.ocr.callback-token 进行轻量校验
                     .requestMatchers("/api/v1/internal/ocr/**").permitAll()
+                    // 微信支付结果回调：由微信服务器无凭证调用，接口内部有验签保护
+                    .requestMatchers("/api/v1/recharge/pay-callback").permitAll()
                     // 文件上传和下载相关接口 - 普通用户和管理员都可访问
                     .requestMatchers("/api/v1/upload/**", "/api/v1/parse", "/api/v1/documents/download",
                         "/api/v1/documents/preview", "/api/v1/documents/page-preview")

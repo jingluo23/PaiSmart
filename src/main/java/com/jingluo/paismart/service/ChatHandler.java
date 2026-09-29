@@ -225,6 +225,13 @@ public class ChatHandler {
 
             return;
         }
+
+        // 归属校验：仅允许停止自己的生成任务，防止已认证用户越权停止他人任务
+        if (chatGenerationStateService.getGenerationForUser(resolvedGenerationId, userId).isEmpty()) {
+            log.warn("生成任务不存在或不属于当前用户，拒绝停止，用户ID: {}，generationId: {}", userId, resolvedGenerationId);
+
+            return;
+        }
         final String targetGenerationId = resolvedGenerationId;
 
         // 设置停止标志

@@ -1,5 +1,6 @@
 package com.jingluo.paismart.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -278,6 +279,8 @@ public class AgentToolRegistry {
         String field = String.valueOf(System.currentTimeMillis());
         String value = StringUtils.isBlank(reason) ? "rating=" + rating : "rating=" + rating + "; reason=" + reason;
         stringRedisTemplate.opsForHash().put(key, field, value);
+        // 反馈数据保留 90 天，避免 feedback:{userId} Hash 无限增长
+        stringRedisTemplate.expire(key, Duration.ofDays(90));
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("key", key);

@@ -1,6 +1,7 @@
 package com.jingluo.paismart.handler;
 
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -40,9 +41,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * 内部命令令牌：客户端通过 /websocket-token 接口换取后，
-     * 用于在 WebSocket 通道上执行停止生成等特权命令
+     * 用于在 WebSocket 通道上执行停止生成等特权命令；每次进程启动随机生成，避免固定值被猜测
      */
-    private static final String INTERNAL_CMD_TOKEN = "WSS_STOP_CMD_" + System.currentTimeMillis() % 1000000;
+    private static final String INTERNAL_CMD_TOKEN = UUID.randomUUID().toString();
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 

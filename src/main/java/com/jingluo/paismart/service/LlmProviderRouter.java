@@ -238,11 +238,10 @@ public class LlmProviderRouter {
      *            流式累积器
      */
     private void settleReActStreamUsage(ReActStreamAccumulator accumulator) {
-        if (Objects.isNull(accumulator) || accumulator.isSettled()) {
+        if (Objects.isNull(accumulator) || !accumulator.markSettled()) {
             return;
         }
 
-        accumulator.setSettled(true);
         int actualPromptTokens =
             accumulator.getPromptTokens() > 0 ? accumulator.getPromptTokens() : accumulator.getEstimatedPromptTokens();
 

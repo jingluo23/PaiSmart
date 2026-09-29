@@ -15,10 +15,8 @@ import com.jingluo.paismart.domain.response.PayOrderReq;
 import com.jingluo.paismart.domain.response.PrePayInfoResBo;
 import com.jingluo.paismart.enums.RechargeStatusEnum;
 import com.jingluo.paismart.utils.HttpRequestUtil;
-import com.wechat.pay.java.core.Config;
 import com.wechat.pay.java.core.RSAAutoCertificateConfig;
 import com.wechat.pay.java.core.exception.ValidationException;
-import com.wechat.pay.java.core.notification.NotificationConfig;
 import com.wechat.pay.java.core.notification.NotificationParser;
 import com.wechat.pay.java.core.notification.RequestParam;
 import com.wechat.pay.java.service.payments.model.Transaction;
@@ -47,6 +45,8 @@ public class WxPayService {
 
     private NativePayService nativePayService;
 
+    private NotificationParser notificationParser;
+
     /**
      * 订单过期时间，官方默认有效期为2小时，这里我们设置为100分钟
      */
@@ -59,16 +59,17 @@ public class WxPayService {
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'+08:00'");
 
     /**
-     * 构造方法：启用微信支付时初始化 Native 支付服务（自动更新平台证书），未启用时置为 null
+     * 构造方法：启用微信支付时初始化 Native 支付服务与回调解析器（自动更新平台证书），未启用时置为 null
      */
     public WxPayService(WxPayConfig wxPayConfig) {
         this.wxPayConfig = wxPayConfig;
         if (wxPayConfig.isEnable()) {
-            Config config = new RSAAutoCertificateConfig.Builder().merchantId(wxPayConfig.getMerchantId())
+            RSAAutoCertificateConfig config = new RSAAutoCertificateConfig.Builder().merchantId(wxPayConfig.getMerchantId())
                 .privateKey(wxPayConfig.getPrivateKeyContent())
                 .merchantSerialNumber(wxPayConfig.getMerchantSerialNumber()).apiV3Key(wxPayConfig.getApiV3Key())
                 .build();
             nativePayService = new NativePayService.Builder().config(config).build();
+            notificationParser = new NotificationParser(config);
         } else {
             nativePayService = null;
         }
@@ -135,17 +136,15 @@ public class WxPayService {
      * 处理微信支付结果通知：使用请求头中的签名信息验签、解密回调报文，转换为支付回调业务对象
      */
     public PayCallbackBo payCallback(HttpServletRequest request) {
+        if (Objects.isNull(notificationParser)) {
+            throw new ValidationException("微信支付未启用");
+        }
+
         RequestParam requestParam = new RequestParam.Builder().serialNumber(request.getHeader("Wechatpay-Serial"))
             .nonce(request.getHeader("Wechatpay-Nonce")).timestamp(request.getHeader("Wechatpay-Timestamp"))
             .signature(request.getHeader("Wechatpay-Signature")).body(HttpRequestUtil.readReqData(request)).build();
 
-        NotificationConfig config = new RSAAutoCertificateConfig.Builder().merchantId(wxPayConfig.getMerchantId())
-            .privateKey(wxPayConfig.getPrivateKeyContent()).merchantSerialNumber(wxPayConfig.getMerchantSerialNumber())
-            .apiV3Key(wxPayConfig.getApiV3Key()).build();
-
-        NotificationParser parser = new NotificationParser(config);
-        // 验签、解密并转换成 Transaction（返回参数对象）
-        Transaction transaction = parser.parse(requestParam, Transaction.class);
+        Transaction transaction = notificationParser.parse(requestParam, Transaction.class);
 
         return toBo(transaction);
     }
@@ -186,6 +185,10 @@ public class WxPayService {
      * 根据业务单号主动查询微信侧订单支付状态
      */
     public PayCallbackBo queryOrder(String outTradeNo) {
+        if (Objects.isNull(nativePayService)) {
+            throw new ValidationException("微信支付未启用");
+        }
+
         QueryOrderByOutTradeNoRequest request = new QueryOrderByOutTradeNoRequest();
         request.setMchid(wxPayConfig.getMerchantId());
         request.setOutTradeNo(outTradeNo);
