@@ -45,9 +45,9 @@ const { columns, columnChecks, data, getData, loading, mobilePagination, searchP
     },
     {
       key: 'status',
-      title: '是否启用',
+      title: '角色',
       width: 100,
-      render: row => <NTag type={row.status ? 'success' : 'warning'}>{row.status ? '已启用' : '已禁用'}</NTag>
+      render: row => <NTag type={row.status ? 'success' : 'warning'}>{row.status ? '用户' : '管理员'}</NTag>
     },
     {
       key: 'createdAt',

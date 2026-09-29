@@ -7,9 +7,9 @@ export const yesOrNoRecord: Record<CommonType.YesOrNo, App.I18n.I18nKey> = {
 
 export const yesOrNoOptions = transformRecordToOption(yesOrNoRecord);
 
-export const enableStatusOptions = [
-  { label: '启用', value: 1 },
-  { label: '禁用', value: 0 }
+export const userRoleOptions = [
+  { label: '用户', value: 1 },
+  { label: '管理员', value: 0 }
 ];
 
 export const chunkSize = 5 * 1024 * 1024;
