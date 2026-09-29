@@ -15,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @Author: 鲸落
@@ -22,6 +23,7 @@ import lombok.Data;
  * @Desc: 邀请码实体
  */
 @Data
+@NoArgsConstructor
 @Entity
 @Table(name = "invite_codes", indexes = {@Index(name = "idx_invite_code_code", columnList = "code", unique = true),
     @Index(name = "idx_invite_code_enabled", columnList = "enabled")})

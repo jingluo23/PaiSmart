@@ -18,6 +18,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @Author: 鲸落
@@ -25,6 +26,7 @@ import lombok.Data;
  * @Desc: 用户 Token 变动流水记录实体，按天记录各类 Token 的增减明细
  */
 @Data
+@NoArgsConstructor
 @Entity
 @Table(name = "user_token_record", indexes = {@Index(name = "idx_user_date", columnList = "userId, recordDate")})
 public class UserTokenRecord {

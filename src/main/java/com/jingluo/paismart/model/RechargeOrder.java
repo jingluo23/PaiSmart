@@ -16,6 +16,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 充值订单实体，对应 recharge_orders 表
@@ -24,6 +25,7 @@ import lombok.Data;
  * @Date: 2026/9/17 9:46
  */
 @Data
+@NoArgsConstructor
 @Entity
 @Table(name = "recharge_orders")
 public class RechargeOrder {
