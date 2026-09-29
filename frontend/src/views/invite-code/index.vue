@@ -305,7 +305,11 @@ function closeDialog() {
 }
 
 async function handleCreate() {
-  await validate();
+  try {
+    await validate();
+  } catch {
+    return;
+  }
 
   submitting.value = true;
   const payload = {

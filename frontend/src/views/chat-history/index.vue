@@ -49,12 +49,20 @@ watchEffect(() => {
   getList();
 });
 
+// 筛选条件快速变化时，避免先发出的请求后返回，用旧结果覆盖新结果
+let requestSeq = 0;
+
 async function getList() {
+  requestSeq += 1;
+  const seq = requestSeq;
   loading.value = true;
   const { error, data } = await request<Api.Chat.Message[]>({
     url: 'admin/conversation',
     params: params.value
   });
+  if (seq !== requestSeq) {
+    return;
+  }
   if (!error) {
     list.value = data;
     scrollToBottom();

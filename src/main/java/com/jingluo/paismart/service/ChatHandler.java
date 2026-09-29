@@ -108,6 +108,11 @@ public class ChatHandler {
      */
     private final Map<String, StringBuilder> responseBuilders = new ConcurrentHashMap<>();
 
+    /**
+     * 会话历史写锁（key 为 conversation:{id}）：Redis 历史是"读-追加-整体覆盖写"， 同一会话并发生成完成时必须串行，否则后写者会覆盖前写者导致消息丢失； 单实例部署下内存锁即可满足，锁对象体积极小，随会话数缓慢增长可接受
+     */
+    private final ConcurrentHashMap<String, Object> conversationHistoryLocks = new ConcurrentHashMap<>();
+
     private final ThreadPoolTaskExecutor chatMonitorExecutor;
 
     /**
@@ -831,39 +836,43 @@ public class ChatHandler {
     private void updateConversationHistory(String conversationId, String userMessage, String response,
         Map<Integer, ReferenceInfo> referenceMapping) {
         String key = "conversation:" + conversationId;
-        List<Map<String, Object>> history = getConversationHistoryRecords(conversationId);
 
-        // 获取当前时间戳
-        String currentTimestamp =
-            java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+        // 读-改-写全程持锁，串行化同一会话的并发写入，避免整体覆盖时丢失对方消息
+        synchronized (conversationHistoryLocks.computeIfAbsent(key, k -> new Object())) {
+            List<Map<String, Object>> history = getConversationHistoryRecords(conversationId);
 
-        // 添加用户消息（带时间戳）
-        Map<String, Object> userMsgMap = new HashMap<>();
-        userMsgMap.put("role", "user");
-        userMsgMap.put("content", userMessage);
-        userMsgMap.put("timestamp", currentTimestamp);
-        history.add(userMsgMap);
+            // 获取当前时间戳
+            String currentTimestamp = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
 
-        // 添加助手回复（带时间戳）
-        Map<String, Object> assistantMsgMap = new HashMap<>();
-        assistantMsgMap.put("role", "assistant");
-        assistantMsgMap.put("content", response);
-        assistantMsgMap.put("timestamp", currentTimestamp);
-        if (!CollectionUtils.isEmpty(referenceMapping)) {
-            assistantMsgMap.put("referenceMappings", toSerializableReferenceMappings(referenceMapping));
-        }
-        history.add(assistantMsgMap);
+            // 添加用户消息（带时间戳）
+            Map<String, Object> userMsgMap = new HashMap<>();
+            userMsgMap.put("role", "user");
+            userMsgMap.put("content", userMessage);
+            userMsgMap.put("timestamp", currentTimestamp);
+            history.add(userMsgMap);
 
-        // 限制历史记录长度，保留最近的20条消息
-        if (history.size() > 20) {
-            history = history.subList(history.size() - 20, history.size());
-        }
+            // 添加助手回复（带时间戳）
+            Map<String, Object> assistantMsgMap = new HashMap<>();
+            assistantMsgMap.put("role", "assistant");
+            assistantMsgMap.put("content", response);
+            assistantMsgMap.put("timestamp", currentTimestamp);
+            if (!CollectionUtils.isEmpty(referenceMapping)) {
+                assistantMsgMap.put("referenceMappings", toSerializableReferenceMappings(referenceMapping));
+            }
+            history.add(assistantMsgMap);
 
-        try {
-            String json = objectMapper.writeValueAsString(history);
-            redisTemplate.opsForValue().set(key, json, Duration.ofDays(7));
-        } catch (JsonProcessingException e) {
-            log.error("序列化对话历史出错: {}, 会话ID: {}", e.getMessage(), conversationId, e);
+            // 限制历史记录长度，保留最近的20条消息
+            if (history.size() > 20) {
+                history = history.subList(history.size() - 20, history.size());
+            }
+
+            try {
+                String json = objectMapper.writeValueAsString(history);
+                redisTemplate.opsForValue().set(key, json, Duration.ofDays(7));
+            } catch (JsonProcessingException e) {
+                log.error("序列化对话历史出错: {}, 会话ID: {}", e.getMessage(), conversationId, e);
+            }
         }
     }
 

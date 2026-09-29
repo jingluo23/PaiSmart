@@ -50,7 +50,11 @@ function close() {
 
 const store = useKnowledgeBaseStore();
 async function handleSubmit() {
-  await validate();
+  try {
+    await validate();
+  } catch {
+    return;
+  }
   if (fileSizeLimitError.value) return;
 
   loading.value = true;

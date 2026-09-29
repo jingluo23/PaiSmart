@@ -45,7 +45,11 @@ function close() {
 }
 
 async function handleSubmit() {
-  await validate();
+  try {
+    await validate();
+  } catch {
+    return;
+  }
   loading.value = true;
   model.value.orgTags = Array.from(new Set([...model.value.orgTags, ...privateOrgTag.value]));
   const res = await request({

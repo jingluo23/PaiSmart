@@ -2,7 +2,6 @@ package com.jingluo.paismart.service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -18,7 +17,6 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -652,7 +650,7 @@ public class UserService {
     }
 
     /**
-     * 分页查询用户列表：先按创建时间倒序做内存过滤与分页，再为每页用户附带组织标签详情、角色状态及当日用量快照
+     * 分页查询用户列表：过滤条件下推到数据库分页查询，再为本页用户批量附带组织标签详情、角色状态及当日用量快照
      *
      * @param keyword
      *            用户名关键词，为空表示不过滤
@@ -671,20 +669,20 @@ public class UserService {
 
         int safeSize = size > 0 ? size : 10;
 
-        int pageIndex = safePage - 1;
+        Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by("createdAt").descending());
 
-        Pageable pageable = PageRequest.of(pageIndex, safeSize, Sort.by("createdAt").descending());
+        Role role = Objects.isNull(status) ? null : (status == 1 ? Role.USER : Role.ADMIN);
 
-        List<User> filteredUsers = userRepository.findAll(Sort.by("createdAt").descending()).stream()
-            .filter(user -> matchesUserListFilters(user, keyword, orgTag, status)).toList();
+        Page<User> userPage = userRepository.findUserPage(trimToNull(keyword), role, trimToNull(orgTag), pageable);
 
-        int start = Math.min((int)pageable.getOffset(), filteredUsers.size());
+        // 批量取本页用户涉及的全部组织标签，替代逐用户逐标签查询
+        Set<String> pageTagIds = userPage.getContent().stream().map(User::getOrgTags)
+            .filter(StringUtils::isNotBlank).flatMap(tags -> Arrays.stream(tags.split(",")))
+            .collect(Collectors.toSet());
 
-        int end = Math.min(start + pageable.getPageSize(), filteredUsers.size());
-
-        List<User> pageContent = start < end ? filteredUsers.subList(start, end) : Collections.emptyList();
-
-        Page<User> userPage = new PageImpl<>(pageContent, pageable, filteredUsers.size());
+        Map<String, OrganizationTag> tagMap = pageTagIds.isEmpty() ? Map.of()
+            : organizationTagRepository.findByTagIdIn(pageTagIds).stream()
+                .collect(Collectors.toMap(OrganizationTag::getTagId, tag -> tag));
 
         // 转换为前端需要的格式
         Map<String, UserUsageSnapshot> usageSnapshots = usageQuotaService
@@ -695,11 +693,11 @@ public class UserService {
             userMap.put("userId", user.getId());
             userMap.put("username", user.getUsername());
 
-            // 获取用户组织标签的详细信息
+            // 按用户 orgTags 的顺序组装标签详情
             List<Map<String, String>> orgTagDetails = new ArrayList<>();
-            if (user.getOrgTags() != null && !user.getOrgTags().isEmpty()) {
+            if (StringUtils.isNotBlank(user.getOrgTags())) {
                 Arrays.stream(user.getOrgTags().split(",")).forEach(tagId -> {
-                    OrganizationTag tag = organizationTagRepository.findByTagId(tagId).orElse(null);
+                    OrganizationTag tag = tagMap.get(tagId);
                     if (tag != null) {
                         Map<String, String> tagInfo = new HashMap<>();
                         tagInfo.put("tagId", tag.getTagId());
@@ -731,39 +729,16 @@ public class UserService {
     }
 
     /**
-     * 判断用户是否匹配用户列表的筛选条件：依次校验组织标签包含关系、用户名关键词、角色状态， 全部通过才返回 true
-     *
-     * @param user
-     *            待检查的用户
-     * @param keyword
-     *            用户名关键词
-     * @param orgTag
-     *            组织标签 ID
-     * @param status
-     *            用户状态：1 表示普通用户，0 表示管理员
-     * @return true 表示匹配所有已指定的筛选条件
+     * 去除首尾空白，结果为空时返回 null，用于将空查询条件转换为跳过过滤
      */
-    private boolean matchesUserListFilters(User user, String keyword, String orgTag, Integer status) {
-        if (StringUtils.isNotBlank(orgTag)) {
-            if (StringUtils.isBlank(user.getOrgTags())) {
-                return Boolean.FALSE;
-            }
-
-            Set<String> userTags = new HashSet<>(Arrays.asList(user.getOrgTags().split(",")));
-            if (!userTags.contains(orgTag)) {
-                return Boolean.FALSE;
-            }
+    private static String trimToNull(String value) {
+        if (Objects.isNull(value)) {
+            return null;
         }
 
-        if (StringUtils.isNotBlank(keyword) && !user.getUsername().contains(keyword)) {
-            return Boolean.FALSE;
-        }
+        String trimmed = value.trim();
 
-        if (Objects.nonNull(status)) {
-            return user.getRole() == (status == 1 ? Role.USER : Role.ADMIN);
-        }
-
-        return Boolean.TRUE;
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**

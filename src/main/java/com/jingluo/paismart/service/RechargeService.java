@@ -158,23 +158,29 @@ public class RechargeService {
             return;
         }
 
-        // 3. 更新订单状态
+        // 3. 更新订单状态；支付成功走条件更新（CAS）抢占发放资格，并发回调/查单同时到达时仅一个请求发放 token
         if (callbackBo.getPayStatus() == RechargeStatusEnum.SUCCEED) {
-            order.setStatus(OrderStatus.SUCCEED);
-            order.setWxTransactionId(callbackBo.getThirdTransactionId());
-            order.setPayTime(LocalDateTime.ofEpochSecond(callbackBo.getSuccessTime() / 1000, 0, ZoneOffset.of("+8")));
-        } else if (callbackBo.getPayStatus() == RechargeStatusEnum.FAIL) {
+            LocalDateTime payTime =
+                LocalDateTime.ofEpochSecond(callbackBo.getSuccessTime() / 1000, 0, ZoneOffset.of("+8"));
+            int updated = rechargeOrderRepository.markSucceedIfNotAlready(tradeNo, OrderStatus.SUCCEED,
+                callbackBo.getThirdTransactionId(), payTime, LocalDateTime.now());
+            if (updated == 1) {
+                this.paySuccessCallback(order);
+            } else {
+                log.info("订单已被并发请求处理成功，跳过 token 发放: tradeNo={}", tradeNo);
+            }
+
+            return;
+        }
+
+        // 支付失败/支付中状态不涉及 token 发放，直接更新
+        if (callbackBo.getPayStatus() == RechargeStatusEnum.FAIL) {
             order.setStatus(OrderStatus.FAIL);
         } else {
             order.setStatus(OrderStatus.PAYING);
         }
 
         rechargeOrderRepository.save(order);
-
-        // 4. 支付成功，增加用户的剩余token数量
-        if (callbackBo.getPayStatus() == RechargeStatusEnum.SUCCEED) {
-            this.paySuccessCallback(order);
-        }
     }
 
     /**
@@ -219,16 +225,18 @@ public class RechargeService {
                 return order;
             }
 
-            order.setStatus(OrderStatus.SUCCEED);
-            order.setWxTransactionId(bo.getThirdTransactionId());
-            order.setPayTime(LocalDateTime.ofEpochSecond(bo.getSuccessTime() / 1000, 0, ZoneOffset.of("+8")));
-            order.setUpdatedAt(LocalDateTime.now());
+            // 条件更新（CAS）抢占发放资格，与支付回调并发到达时仅一个请求发放 token
+            LocalDateTime payTime = LocalDateTime.ofEpochSecond(bo.getSuccessTime() / 1000, 0, ZoneOffset.of("+8"));
+            int updated = rechargeOrderRepository.markSucceedIfNotAlready(tradeNo, OrderStatus.SUCCEED,
+                bo.getThirdTransactionId(), payTime, LocalDateTime.now());
+            if (updated == 1) {
+                paySuccessCallback(order);
+            } else {
+                log.info("订单已被并发请求处理成功，跳过 token 发放: tradeNo={}", tradeNo);
+            }
 
-            rechargeOrderRepository.save(order);
-
-            paySuccessCallback(order);
-
-            return order;
+            // CAS 为数据库侧更新，重新查询保证返回最新状态
+            return rechargeOrderRepository.findByTradeNo(tradeNo).orElse(order);
         }
 
         return getOrderDetail(tradeNo);

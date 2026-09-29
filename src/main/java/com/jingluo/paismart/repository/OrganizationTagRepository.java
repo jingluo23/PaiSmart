@@ -1,5 +1,6 @@
 package com.jingluo.paismart.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,15 @@ public interface OrganizationTagRepository extends JpaRepository<OrganizationTag
      * @return
      */
     Optional<OrganizationTag> findByTagId(String tagId);
+
+    /**
+     * 按 tagId 集合批量查询组织标签，供用户列表页一次性取整页涉及的标签
+     *
+     * @param tagIds
+     *            标签 ID 集合
+     * @return 匹配的标签列表
+     */
+    List<OrganizationTag> findByTagIdIn(Collection<String> tagIds);
 
     /**
      * 判断指定标签 ID 是否已存在

@@ -62,7 +62,11 @@ function close() {
 }
 
 async function handleSubmit() {
-  await validate();
+  try {
+    await validate();
+  } catch {
+    return;
+  }
   loading.value = true;
 
   const payload = {
