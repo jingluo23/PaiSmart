@@ -97,8 +97,6 @@ declare namespace Api {
     interface UsageSnapshot {
       day: string;
       chatRequestCount: number;
-      llmBalanceTokens: number;
-      embeddingBalanceTokens: number;
       llm: UsageQuota;
       embedding: UsageQuota;
     }

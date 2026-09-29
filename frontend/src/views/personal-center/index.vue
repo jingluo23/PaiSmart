@@ -12,8 +12,6 @@ const tags = ref<Api.OrgTag.Mine>({
 const usage = ref<Api.User.UsageSnapshot>({
   day: '',
   chatRequestCount: 0,
-  llmBalanceTokens: 0,
-  embeddingBalanceTokens: 0,
   llm: {
     enabled: false,
     usedTokens: 0,
@@ -226,9 +224,6 @@ const tokenRecordColumns = computed(() => [
             <div class="grid gap-4 md:grid-cols-2">
               <NCard size="small" embedded class="quota-card">
                 <div class="text-sm text-stone-700 font-semibold">LLM Token</div>
-                <div class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
-                  <div>钱包余额 {{ usage.llmBalanceTokens.toLocaleString() }}</div>
-                </div>
                 <div v-if="usage.llm.enabled" class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
                   <div>
                     已用 {{ usage.llm.usedTokens.toLocaleString() }} / {{ usage.llm.limitTokens.toLocaleString() }}
@@ -240,9 +235,6 @@ const tokenRecordColumns = computed(() => [
               </NCard>
               <NCard size="small" embedded class="quota-card">
                 <div class="text-sm text-stone-700 font-semibold">Embedding Token</div>
-                <div class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
-                  <div>钱包余额 {{ usage.embeddingBalanceTokens.toLocaleString() }}</div>
-                </div>
                 <div v-if="usage.embedding.enabled" class="mt-3 flex flex-col gap-2 text-sm text-stone-500">
                   <div>
                     已用 {{ usage.embedding.usedTokens.toLocaleString() }} /
